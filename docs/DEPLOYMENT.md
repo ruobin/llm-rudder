@@ -315,6 +315,45 @@ Each commit on `main` publishes images for amd64 and arm64 to `ghcr.io/ruobin/ll
 
 The script waits for the new gateway to become ready, and returns to the previous version if it does not. The **Deploy** workflow runs the same script over SSH when you start it by hand. It needs a `production` environment with the secrets `DEPLOY_HOST`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` and `DEPLOY_PATH`.
 
+## 14. Run several instances
+
+Two or more gateway instances let you update without interrupting anyone, and keep serving if one process crashes. They run on the same server and share their state through Redis. This does not protect you from losing the whole server.
+
+Add a password for Redis and turn on the scaled setup:
+
+```bash
+cd /opt/llm-rudder
+sed -i '/^REDIS_PASSWORD=/d; /^COMPOSE_FILE=/d' .env
+echo "REDIS_PASSWORD=$(openssl rand -hex 24)" >> .env
+echo "COMPOSE_FILE=docker-compose.yml:docker-compose.scale.yml" >> .env
+docker compose build gateway
+docker compose up -d --remove-orphans
+```
+
+Two instances start by default. Set `LLMR_REPLICAS` in `.env` to run more. A small load balancer now listens on the same `127.0.0.1:4141`, so your proxy and clients need no change. `/router/status` lists the instances, and the dashboard's Overview page shows how many are running.
+
+**To update without interruption,** bring in the new version and replace the instances:
+
+```bash
+git pull --ff-only
+docker compose build gateway
+./deploy/rolling-update.sh
+```
+
+New instances start first. Old ones stop taking requests, finish the ones they have, and exit. If a new instance does not become ready, it is removed and the old ones keep running. If you use published images, `./deploy/update.sh` does this for you.
+
+| What instances share                                            | How it behaves                                                                    |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Paused accounts, conversation pins, fallbacks and notifications | One instance's discovery reaches the others at once, and each alert is sent once  |
+| Budgets and client limits                                       | Enforced across all instances                                                     |
+| Client keys and **Reload config**                               | Apply everywhere                                                                  |
+| Tool-call reasoning and signatures                              | A tool loop can continue on any instance. They stay in memory and are never saved |
+| The ChatGPT sign-in                                             | One instance renews it at a time, using a lock on the shared volume               |
+
+**If Redis stops,** requests keep working. Each instance uses what it knows, applies client limits by itself, and keeps to its share of each remaining budget. They catch up when Redis returns, and Redis needs no backup because its contents are rebuilt.
+
+To return to one instance, remove the `COMPOSE_FILE` line from `.env` and run `docker compose up -d --remove-orphans`.
+
 ## Removing it
 
 `docker compose down` stops the gateway and keeps its data. `docker compose down -v` also deletes the database and the ChatGPT sign-in. Before deleting a sign-in you no longer need, run `llmr-edge chatgpt logout --for root@your-vps` so OpenAI ends the session too.

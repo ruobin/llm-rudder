@@ -1480,20 +1480,37 @@ flowchart LR
 | Stage                    | Move here when                                               | What runs                                                                                                  | What changes in the code                                                                                                                  |
 | ------------------------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | **1. Single instance**   | Now                                                          | 1 gateway, MySQL, reverse proxy                                                                            | Nothing. State is in memory with write-through to MySQL.                                                                                  |
-| **2. Several instances** | CPU stays above about 60%, or you want zero-downtime deploys | 2–4 gateway containers behind the proxy, plus Redis                                                        | `QuotaStore`, budget reservations, pins, rate limits and fallback episodes move to Redis behind the same interfaces.                      |
+| **2. Several instances** | CPU stays above about 60%, or you want zero-downtime deploys | 2–4 gateway containers behind a load balancer, plus Redis                                                  | Quota states, budget holds, pins, client limits and fallback episodes are shared through Redis.                                           |
 | **3. Two hosts**         | A VPS failure would hurt too much                            | Active VPS and standby VPS in different supported regions, replicated MySQL, DNS or load-balancer failover | Health-based failover. Each host gets its own ChatGPT host ID, and only one refreshes tokens at a time.                                   |
 | **4. Multi-user**        | Other people use it                                          | Kubernetes or a managed container service, managed MySQL and Redis, object storage for exports             | Per-user accounts and credentials, reservation-based budgets, organizations, audit log. Each person connects **their own** subscriptions. |
 
-**Design rules that keep this possible:**
+**Stage 2 is built.** Set `REDIS_URL`, or use `docker-compose.scale.yml`, and instances work together. The [deployment guide](DEPLOYMENT.md#14-run-several-instances) explains how to run it.
 
-- **All shared state goes through interfaces** (`QuotaStore`, `BudgetStore`, `PinStore`, `EpisodeStore`). In Stage 1 they are in-process.
-- **Streams do not need sticky routing.** A stream lives on one instance until it ends. The next request can land anywhere, because pins and quota are shared.
-- **Atomic operations only.** Budget reservation and pin creation are single atomic Redis operations in Stage 2, never read-then-write.
-- **One token refresher.** ChatGPT token refresh takes a Redis lock, because refresh tokens rotate.
-- **Failure of Redis degrades, not stops.** Instances fall back to local state and log loudly. Budgets become stricter by reserving a smaller share per instance.
-- **The ledger scales separately.** Monthly partitions on `requests` and `attempts`, a daily rollup table, and later a read replica for the dashboard. Writes stay asynchronous.
+```mermaid
+flowchart LR
+  P["Proxy or client"] --> B["Load balancer"]
+  B --> G1["Gateway 1"]
+  B --> G2["Gateway 2"]
+  G1 <--> R[("Redis")]
+  G2 <--> R
+  G1 --> M[("MySQL")]
+  G2 --> M
+```
 
-**Measure before scaling.** `pnpm load-test` runs against the fake upstream. On an Apple Silicon laptop, the gateway added about 0.2 ms at the median and 0.4 to 0.6 ms at the 95th percentile, handled about 8,700 short requests per second, and held 1,000 open streams at about 33 KB each. A provider's own latency and limits will matter far sooner. Stage 2's triggers should be set from those numbers.
+**How instances share state:**
+
+- **Requests read local copies.** Routing stays synchronous and adds no network wait. Each change is applied locally, written to Redis and published to the other instances. A joining instance loads the current state from Redis.
+- **The latest change wins.** Quota changes carry a time that always moves forward, so instances agree whatever order messages arrive in.
+- **Instances compare notes.** Messages can be lost during a reconnect, so every minute, and after every reconnection, each instance brings itself and the shared state back in line.
+- **Decisions that must not race are single atomic Redis steps.** These are budget holds, client request counts, concurrent-request places and conversation pins. Holds and places expire by themselves if an instance dies.
+- **Streams need no sticky routing.** A stream stays on one instance until it ends, and the next request can land anywhere. Tool-call reasoning and signatures are fetched from Redis when a request needs them.
+- **Notifications are claimed.** The first instance to claim an event sends it.
+- **Loss of Redis degrades, it does not stop.** Instances fall back to their own state and log it once. Client limits apply per instance, and each instance keeps to its share of what remains of a budget. When Redis returns, they merge what changed. Redis keeps nothing on disk, and spending totals are restored from MySQL.
+- **One token refresher.** ChatGPT refresh tokens rotate, so a lock file on the shared volume allows one renewal at a time. It does not depend on Redis, because a second renewal could lose the sign-in. Stage 3 needs a lock that works across hosts.
+- **Some state stays per instance on purpose.** Target health and the failed-login throttle reflect what each instance sees.
+- **The ledger scales separately.** Monthly partitions on `requests` and `attempts`, and later a read replica for the dashboard, remain for when the tables need them. Writes stay asynchronous.
+
+**Measure before scaling.** `pnpm load-test` runs against the fake upstream. On an Apple Silicon laptop, the gateway added about 0.2 ms at the median and 0.4 to 0.6 ms at the 95th percentile, handled about 8,700 short requests per second, and held 1,000 open streams at about 33 KB each. With state shared through Redis, it added about 0.6 to 0.8 ms at the median and handled about 5,000 short requests per second per instance. A provider's own latency and limits will matter far sooner. Stage 2's triggers should be set from those numbers.
 
 ---
 

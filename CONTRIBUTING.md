@@ -13,7 +13,7 @@ pnpm demo             # the routing story in your terminal
 pnpm demo:dashboard   # the dashboard with made-up traffic
 ```
 
-To include the MySQL tests, point `TEST_DATABASE_URL` at an empty database.
+To include the MySQL and Redis tests, point `TEST_DATABASE_URL` at an empty database and `TEST_REDIS_URL` at a Redis server.
 
 ## How the code is organized
 
@@ -36,6 +36,8 @@ These files, in this order, are the shortest way to understand the gateway. All 
 4. **The request is sent.** If the client and the account use the same API, a protocol in [`execution/protocols`](apps/gateway/src/execution/protocols) passes it through almost unchanged. Otherwise [`translate`](apps/gateway/src/translate) converts it through a common format, in both directions.
 5. **Failures are understood.** [`upstream/classify.ts`](apps/gateway/src/upstream/classify.ts) decides what an error means and whether it concerns the request, the model or the account. [`state/quota.ts`](apps/gateway/src/state/quota.ts) and [`state/health.ts`](apps/gateway/src/state/health.ts) remember it.
 6. **It is recorded.** [`ledger`](apps/gateway/src/ledger) stores routing details and token counts, never prompts or answers. [`notify`](apps/gateway/src/notify) tracks fallbacks and sends alerts.
+
+When several instances run together, [`cluster`](apps/gateway/src/cluster) keeps their state in step through Redis, and tests use an in-memory stand-in for it.
 
 [`runtime.ts`](apps/gateway/src/runtime.ts) connects these parts, and [`app.ts`](apps/gateway/src/app.ts) builds the web server.
 

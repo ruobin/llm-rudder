@@ -188,7 +188,7 @@ Each app uses your gateway's address followed by `/v1`, its own key, and `fronti
 
 ## Project status
 
-Phases 1 to 5 are built, including the dashboard, metrics, alerts and encrypted backups. A deployed gateway has served real requests through a ChatGPT plan and through a New API gateway, including tool calls in all three API formats. The real OpenCode, Pi, Claude Code and Codex command-line clients are tested automatically against fake providers. Direct OpenAI, Anthropic and Gemini API keys, and those clients on real accounts, still need testing. The [to-do list](docs/TODO.md) has the details.
+Phases 1 to 5 are built, including the dashboard, metrics, alerts and encrypted backups. From Phase 6, [several instances](docs/DEPLOYMENT.md#14-run-several-instances) can share the work, with updates that do not interrupt requests. A deployed gateway has served real requests through a ChatGPT plan and through a New API gateway, including tool calls in all three API formats. The real OpenCode, Pi, Claude Code and Codex command-line clients are tested automatically against fake providers. Direct OpenAI, Anthropic and Gemini API keys, and those clients on real accounts, still need testing. The [to-do list](docs/TODO.md) has the details.
 
 ## Develop
 
@@ -202,7 +202,7 @@ pnpm load-test           # measure added latency, stream memory and throughput
 pnpm docs:screenshots    # retake the screenshots in docs/images; needs Google Chrome
 ```
 
-Tests use fake upstreams and recorded responses. To include the MySQL tests, set `TEST_DATABASE_URL`.
+Tests use fake upstreams and recorded responses. To include the MySQL and Redis tests, set `TEST_DATABASE_URL` and `TEST_REDIS_URL`.
 
 ## License
 

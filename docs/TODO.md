@@ -12,7 +12,7 @@ This is the working checklist. [`DESIGN.md`](DESIGN.md) explains why. Each phase
 | [3](#phase-3--translation-codex-and-pins) | Translation, Codex and pins           | 2–3 weeks  | Code done; real keys pending   |
 | [4](#phase-4--chatgpt-plan)               | ChatGPT plan                          | ~1 week    | Deployed; long-run checks left |
 | [5](#phase-5--dashboard-and-hardening)    | Dashboard and hardening               | 2–3 weeks  | Deployed; long-run checks left |
-| [6](#phase-6--scale)                      | Scale                                 | Open-ended | Not started                    |
+| [6](#phase-6--scale)                      | Scale                                 | Open-ended | Stage 2 built                  |
 
 ---
 
@@ -260,11 +260,19 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 
 ## Phase 6 — Scale
 
-Do these only when a trigger in `DESIGN.md` section 10 is reached.
+The stages and their triggers are in `DESIGN.md` section 10.
 
-- [ ] Redis stores for quota, budgets, pins, rate limits and fallback episodes
-- [ ] Several gateway instances with zero-downtime deploys
-- [ ] Token-refresh lock
+**Stage 2: several instances on one server**
+
+- [x] Redis stores for quota, budgets, pins, rate limits and fallback episodes
+- [x] Several gateway instances behind a load balancer, with rolling updates
+- [x] Token-refresh lock for instances that share a ChatGPT sign-in
+- [x] Client keys, config reloads and tool-call artifacts shared between instances
+- [x] Instances keep serving when Redis is down, and catch up when it returns
+- [ ] **(you)** Decide whether SG1 should run two instances
+
+**Later stages**
+
 - [ ] Monthly ledger partitions and a read replica
 - [ ] Second VPS with replicated MySQL and automatic failover
 - [ ] Multi-user accounts, where each person connects their own subscriptions
