@@ -2,7 +2,7 @@
 
 A personal LLM gateway. Clients ask for `frontier`, `medium` or `flash`. The gateway picks a real model from your API keys and OpenAI-compatible gateways, moves to the next one when a target fails or runs out of quota, and drops to another tier with a warning instead of failing the task.
 
-**Status: Phases 1 and 2 are built.** The gateway serves the OpenAI Chat Completions API, used by OpenCode, Pi, chat UIs and the OpenAI SDK, and Anthropic's Messages API, used by Claude Code. A small local helper keeps Claude Code on your Claude plan and moves it to an Anthropic API key when the plan runs out. Neither has been run against real provider accounts yet. Codex and the ChatGPT plan come in later phases. See [the design](docs/DESIGN.md) and [the to-do list](docs/TODO.md).
+**Status: Phases 1 to 3 are built.** The gateway serves the OpenAI Chat Completions and Responses APIs and Anthropic's Messages API, and translates between them, so any client can use any model. The real OpenCode, Pi, Claude Code and Codex command-line clients have been tested through it with fake providers, and chat UIs use the same Chat Completions API. A small local helper keeps Claude Code on your Claude plan and moves it to the gateway when the plan runs out. None of this has run against real provider accounts yet. The ChatGPT plan comes in a later phase. See [the design](docs/DESIGN.md) and [the to-do list](docs/TODO.md).
 
 ## Try it locally
 
@@ -26,7 +26,7 @@ cp config/config.example.yaml config/config.yaml
 
 docker compose build gateway
 docker compose run --rm --no-deps gateway node dist/cli.js keygen \
-  LLMR_ADMIN_KEY LLMR_KEY_OPENCODE LLMR_KEY_PI LLMR_KEY_CHAT_UI LLMR_KEY_SCRIPTS LLMR_KEY_CLAUDE_CODE
+  LLMR_ADMIN_KEY LLMR_KEY_OPENCODE LLMR_KEY_PI LLMR_KEY_CHAT_UI LLMR_KEY_SCRIPTS LLMR_KEY_CLAUDE_CODE LLMR_KEY_CODEX
 # Put those keys, your provider keys and the database passwords in .env.
 # Edit the tiers in config/config.yaml.
 
@@ -79,12 +79,38 @@ llmr-edge doctor
 
 > Anthropic says developers may not "intermediate" Claude login tokens, and its docs do not address a personal helper like this one. The token stays on your computer and goes only to Anthropic, but some risk remains. See [the design](docs/DESIGN.md#31-claude-plan). To stop using the edge, remove those settings.
 
+## Use it with Codex
+
+Add this to `~/.codex/config.toml`, replacing the hostname:
+
+```toml
+[model_providers.llmr]
+name = "llm-router"
+base_url = "https://llm.example.com/v1"
+model_catalog_url = "https://llm.example.com/router/codex/models"
+wire_api = "responses"
+env_key = "LLMR_KEY_CODEX"
+requires_openai_auth = false
+```
+
+Create `~/.codex/llmr.config.toml`:
+
+```toml
+model_provider = "llmr"
+model = "frontier"
+web_search = "disabled"
+```
+
+Then run `codex --profile llmr`.
+
 ## Develop
 
 ```bash
 pnpm dev      # run the gateway with reload; needs config/config.yaml
 pnpm check    # lint, format check, type-check and tests
 pnpm smoke:claude-code   # run the real Claude Code CLI with a fake login and no outside network
+pnpm smoke:codex         # the same for Codex
+pnpm smoke:clients       # the same for OpenCode and Pi
 ```
 
 Tests use fake upstreams. To include the MySQL tests, set `TEST_DATABASE_URL`.

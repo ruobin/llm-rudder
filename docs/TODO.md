@@ -9,7 +9,7 @@ This is the working checklist. [`DESIGN.md`](DESIGN.md) explains why. Each phase
 | [0](#phase-0--verify-with-real-accounts)  | Verify assumptions with real accounts | 1–2 days   | Not started                   |
 | [1](#phase-1--mvp-gateway-on-the-vps)     | MVP gateway on the VPS                | ~1 week    | Code done; deployment pending |
 | [2](#phase-2--claude-code-lane)           | Claude Code lane                      | ~1 week    | Code done; real login pending |
-| [3](#phase-3--translation-codex-and-pins) | Translation, Codex and pins           | 2–3 weeks  | Not started                   |
+| [3](#phase-3--translation-codex-and-pins) | Translation, Codex and pins           | 2–3 weeks  | Code done; real keys pending  |
 | [4](#phase-4--chatgpt-plan)               | ChatGPT plan                          | ~1 week    | Not started                   |
 | [5](#phase-5--dashboard-and-hardening)    | Dashboard and hardening               | 2–3 weeks  | Not started                   |
 | [6](#phase-6--scale)                      | Scale                                 | Open-ended | Not started                   |
@@ -123,7 +123,8 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 - [x] Automated: reaching a budget skips that target, and spend survives a restart.
 - [x] Automated: a failure after streaming starts gives an error event, never a spliced answer.
 - [ ] **(you)** Deployed on the VPS with TLS.
-- [ ] **(you)** OpenCode, Pi and your chat UI complete a real conversation through it.
+- [x] Automated: the real OpenCode and Pi CLIs complete conversations and tool loops through it, with fake providers.
+- [ ] **(you)** OpenCode, Pi and your chat UI complete a real conversation on the deployed gateway.
 
 ---
 
@@ -159,25 +160,28 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 
 **Goal:** any client can reach any model, Claude Code can continue on GPT or Gemini, and Codex works.
 
-- [ ] Common request and stream representation
-- [ ] Codecs for Chat, Messages and Responses, with golden tests
-- [ ] Model capability profiles and a capability filter
-- [ ] Parameter mapping: effort, output limits, sampling, tool choice
-- [ ] Rules for current Claude models
-- [ ] `POST /v1/responses` ingress, following Codex's gateway requirements
-- [ ] `GET /router/codex/models` catalog
-- [ ] Responses egress adapter
-- [ ] Session pins in MySQL, including the rules for fallback tiers
-- [ ] Short-throttle hold
-- [ ] Reasoning-artifact handling across providers
-- [ ] Automated canary runs against new Claude Code and Codex releases
+- [x] Common request and stream representation
+- [x] Codecs for Chat, Messages and Responses, with golden tests
+- [x] Model capability profiles and a capability filter
+- [x] Parameter mapping: effort, output limits, sampling, tool choice
+- [x] Rules for current Claude models
+- [x] `POST /v1/responses` ingress, following Codex's gateway requirements
+- [x] `GET /router/codex/models` catalog
+- [x] Responses egress adapter
+- [x] Session pins in MySQL, including the rules for fallback tiers
+- [x] Short-throttle hold
+- [x] Reasoning-artifact handling across providers
+- [x] Automated canary runs against new Claude Code and Codex releases
 
 **Exit criteria**
 
-- [ ] Claude Code finishes a multi-step tool task on GPT, and again on Gemini.
-- [ ] A Claude Code session fails over mid-task once, with no back-and-forth.
-- [ ] OpenCode and a script can use Claude through an API key, with prompt caching working.
-- [ ] Codex passes its documented gateway checks: connection, streaming, tool loop, follow-up and useful errors.
+- [x] Automated, with the real Claude Code CLI and fake providers: it finishes a tool task on GPT, and again on Gemini.
+- [x] Automated: a session that fails over stays on its new target, with no back-and-forth.
+- [x] Automated, with the real OpenCode and Pi CLIs and the OpenAI SDK: they use Claude through an API key, with caching requested.
+- [x] Automated, with the real Codex CLI: connection, tool loop, follow-up and useful errors.
+- [ ] **(you)** Repeat a Claude Code tool task on real GPT and Gemini keys.
+- [ ] **(you)** Confirm a real cache hit when OpenCode uses Claude through an API key.
+- [ ] **(you)** Run Codex against the deployed gateway.
 
 ---
 

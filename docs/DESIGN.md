@@ -2,7 +2,7 @@
 
 |           |                                                                                                                                                                |
 | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status    | Draft 2, updated 2026-11-18 with Phases 1 and 2 as built. It replaces the local-first Python Draft 1, which stays in git history.                              |
+| Status    | Draft 2, updated 2026-11-18 with Phases 1 to 3 as built. It replaces the local-first Python Draft 1, which stays in git history.                               |
 | Scope     | A personal model gateway on your own VPS, with a phased path to a production-grade service                                                                     |
 | Work plan | [`TODO.md`](TODO.md) splits the work into phases with checklists and exit criteria.                                                                            |
 | Reference | [`ROUTER_DESIGN.md`](ROUTER_DESIGN.md), an earlier proposal by another agent. [Appendix B](#appendix-b-what-changed) lists what this design keeps and changes. |
@@ -151,6 +151,16 @@ Anthropic, OpenAI and Google all list the **United States, Singapore and Taiwan*
 - Wrapping `claude -p`, `codex exec` or `agy -p` as a model backend for other clients.
 
 If a provider changes its rules, one account stops (`enabled: false`) and the rest keeps working.
+
+### 3.7 API formats and clients
+
+Re-read on 2026-11-18, before Phase 3 was built.
+
+- **Current GPT models call tools only through the Responses API.** OpenAI says GPT-6.2 Astra and Sol support Chat Completions, but that tool calling requires Responses. Its reasoning guide says the same of GPT-6 Astra and GPT-6.1 Sol. So the `openai-key` account uses `api: openai.responses`.
+- **Those models also reject some settings.** OpenAI's guide says to omit `temperature` and `top_p` for GPT-6.2 Astra and Sol. The per-model rules live in `config/models.yaml`.
+- **Codex needs `POST /v1/responses` and a stream that ends with `response.completed`.** Its gateway guide says replayed input and the IDs linking tool calls to results must be kept, and failure events must be forwarded. Its source shows that a custom provider compacts locally by default, so no compaction endpoint is needed.
+- **A Codex catalog entry must include instructions.** Codex rejects an entry that has neither `base_instructions` nor `model_messages.instructions_template`.
+- **Anthropic does not support Claude Code on other models.** Its gateway page says Anthropic "doesn't support routing Claude Code to non-Claude models through any gateway". The translator works with today's client, but a Claude Code update could change what it needs, so the canary in [section 8.20](#820-testing) runs against each new release.
 
 ---
 
@@ -386,11 +396,11 @@ Details and example files are in [Appendix A](#appendix-a-client-setup).
 | **Chat UI** (Open WebUI, LibreChat) | Chat Completions                               | Router key                   | `X-Session-Id` set from the UI's chat ID        | Note in the reply, push           | 1     |
 | **Your scripts**                    | Chat Completions (OpenAI SDK)                  | Router key                   | Optional `X-Session-Id`                         | Response headers, push            | 1     |
 | **Claude Code**                     | Anthropic Messages, through `llmr-edge`        | Claude login stays local     | `x-claude-code-session-id`                      | Status line, desktop notification | 2     |
-| **Codex**                           | Responses API only                             | Router key via a `--profile` | Derived from the conversation                   | Note in the reply, push           | 3     |
+| **Codex**                           | Responses API only                             | Router key via a `--profile` | `session-id` header                             | Note in the reply, push           | 3     |
 
 Facts from the client docs that shape the gateway:
 
-- **Codex accepts only the Responses API.** Its docs say `responses` "is the only supported value" for `wire_api`, and a working Chat Completions endpoint "doesn't establish Responses compatibility". So Codex must wait for Phase 3.
+- **Codex accepts only the Responses API.** Its docs say `responses` "is the only supported value" for `wire_api`, and a working Chat Completions endpoint "doesn't establish Responses compatibility". The gateway serves that API directly.
 - **OpenCode and Pi do not discover models from a custom endpoint.** You list `frontier`, `medium` and `flash` in their config, with context limits.
 - **OpenCode requires a `finish_reason`** by default and requests stream usage through `stream_options.include_usage`. The gateway must honor both.
 - **Advertise the smallest context window in the fallback chain.** Clients compact based on the number you give them. If you tell a client 1M and it lands on a 200K model, the request fails.
@@ -445,9 +455,10 @@ llm-router/
 │   │   │   ├── dev/             # fake upstream and the demo
 │   │   │   ├── config/          # Zod schema, YAML loader, compat profiles
 │   │   │   ├── auth/            # client keys, rate limits, failed-auth throttle
-│   │   │   ├── ingress/         # chat, messages, edge and admin routes
-│   │   │   ├── routing/         # resolver, planner
-│   │   │   ├── execution/       # executor, one protocol per API format, notices
+│   │   │   ├── ingress/         # chat, messages, responses, edge and admin routes
+│   │   │   ├── routing/         # resolver, planner, capability filter, session pins
+│   │   │   ├── execution/       # executor, one passthrough protocol per API format, notices
+│   │   │   ├── translate/       # common format, one codec per API format, reasoning store
 │   │   │   ├── upstream/        # HTTP client, classifiers, SSE parser, tool extras
 │   │   │   ├── state/           # quota state machine and stores
 │   │   │   ├── billing/         # pricing, budgets
@@ -593,7 +604,28 @@ edge:
   report_interval_s: 300
 ```
 
-An `anthropic.messages` account sends its key in `x-api-key`. Set `auth_header: bearer` for a third-party gateway that expects `Authorization`. Until Phase 3 adds translation, a request only goes to accounts that speak its format.
+An `anthropic.messages` account sends its key in `x-api-key`. Set `auth_header: bearer` for a third-party gateway that expects `Authorization`.
+
+**For translation (Phase 3):**
+
+```yaml
+accounts:
+  openai-key:
+    api: openai.responses # openai.chat is the default
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    cost_class: metered
+
+tiers:
+  frontier:
+    targets:
+      - { account: openai-key, model: gpt-6.2-astra, effort: high } # used when the client sets none
+
+routing:
+  prefer_same_format: true # try accounts in the client's own format first
+
+models_file: models.yaml # what each model accepts
+```
 
 **Added in Phase 4:** `chatgpt-plan: { kind: chatgpt_plan, cost_class: prepaid }`.
 
@@ -603,7 +635,8 @@ An `anthropic.messages` account sends its key in `x-api-key`. Set `auth_header: 
 - Every client key is at least 32 characters and unique.
 - `fallback_tiers` cannot include the tier itself.
 - A value that looks like a secret (`sk-…`, `llmr_…`) is rejected inside the YAML.
-- An `edge_only` account cannot be a tier target, and `anthropic.messages` targets cannot set `params`, because their request body is passed through.
+- An `edge_only` account cannot be a tier target.
+- `params` apply only to `openai.chat` accounts. Use `effort` on the others.
 - A warning is printed when a metered account has no budget, or a tier has only one target.
 
 ### 8.4 Core types
@@ -721,6 +754,18 @@ function buildPlan(ctx: RequestContext, cfg: Config, state: RouterState, now: nu
   return { requestedTier: tier, steps, skipped };
 }
 ```
+
+**Order within a tier.** Targets in the client's own API format go first, keeping their listed order, because they need no translation and keep prompt caching and reasoning intact. `prefer_same_format: false` turns this off.
+
+**Capability filter.** A target is skipped when `config/models.yaml` says its model cannot serve the request:
+
+- images or documents it cannot read,
+- tools, when the model calls tools only through another API,
+- a request larger than its context window,
+- hosted tools the request depends on, unless the target belongs to that provider,
+- `previous_response_id`, unless the target speaks the Responses API.
+
+Models not listed are assumed capable. If a request has ordinary tools too, optional hosted tools such as Codex's web search are dropped on translation.
 
 ### 8.6 Executor and streaming
 
@@ -917,14 +962,15 @@ The **session key** is taken from the first of these that is present:
 
 Phase 1 uses it only so that the note appears once per conversation.
 
-**Pinning (Phase 3).** A pin keeps a conversation on one target, because switching providers means re-sending the whole prompt uncached.
+**Pinning.** A pin keeps a conversation on one target, because switching providers means re-sending the whole prompt uncached. Pins are stored in MySQL.
 
-- Key: `(client, session, requested tier)`. Set on first success, without overwriting a concurrent winner.
-- A short throttle (`retry-after` of 10 s or less) waits and retries the pinned target once.
+- Key: `(client, session, requested tier)`. Set on success, without overwriting a concurrent winner.
+- A pinned target goes first, ahead of the normal order.
+- A short throttle (`retry-after` of 10 s or less) on the pinned target waits and retries it once.
 - Failover moves the pin.
 - A pin on a **fallback tier** is released as soon as the requested tier has a working target.
 - A pin on a metered target moves back when a prepaid target above it recovers.
-- Pins expire after about 10 minutes idle, matching the prompt cache.
+- Pins expire after 10 minutes idle, matching the prompt cache.
 
 ### 8.12 The edge (Phase 2)
 
@@ -945,7 +991,7 @@ Request for claude-opus-5-5 (tier frontier):
   gateway:flash
 ```
 
-A tier with `prefer: cost` lists every plan step first. A tier with no account that speaks Anthropic's format has no gateway step until Phase 3.
+A tier with `prefer: cost` lists every plan step first. A tier with no account this client may use has no gateway step. Any account can serve Claude Code, through translation when needed.
 
 - A `plan` step goes to `api.anthropic.com` with Claude Code's request unchanged, except `model` on a fallback step.
 - A `gateway` step goes to the VPS with the router key, `X-LLMR-Tier` and `X-LLMR-No-Fallback: 1`, so the edge stays in control of the order.
@@ -1001,27 +1047,31 @@ These come from Claude Code's gateway compatibility guide and apply on the edge 
 
 #### Translation (Phase 3)
 
-Each dialect has a codec that decodes into a common representation and encodes from it, so three codecs replace six pairwise translators.
+Each API format has a codec that decodes into a common form and encodes from it, so three codecs cover all six pairs. A request whose target speaks the client's format skips this and passes through.
 
 ```ts
 interface IRRequest {
-  model: string;
-  system: Block[];
-  messages: { role: "user" | "assistant" | "tool"; blocks: Block[] }[];
-  tools: ToolDef[];
-  toolChoice?: ToolChoice;
+  system: string[];
+  messages: { role: "system" | "user" | "assistant"; blocks: Block[] }[];
+  tools: IRTool[];
+  hostedTools: IRHostedTool[];
+  hostedToolsRequired: boolean;
+  toolChoice?: IRToolChoice;
+  parallelToolCalls?: boolean;
   maxOutputTokens?: number;
-  reasoning?: { effort?: string };
-  responseFormat?: unknown;
-  stream: boolean;
-  extensions: Record<string, unknown>;
+  temperature?: number;
+  topP?: number;
+  stop?: string[];
+  effort?: Effort;
+  reasoningSummary?: boolean;
+  responseFormat?: IRResponseFormat;
 }
 type Block = Text | Image | Document | ToolCall | ToolResult | Reasoning;
 ```
 
 | Concept           | `anthropic.messages`                                                | `openai.chat`                                    | `openai.responses`                         |
 | ----------------- | ------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------ |
-| System prompt     | Top-level `system`                                                  | `system` or `developer` message                  | `instructions`                             |
+| System prompt     | Top-level `system`, `system` messages                               | `system` or `developer` message                  | `instructions`, `developer` input items    |
 | Tool definition   | `{name, description, input_schema}`                                 | `{type: function, function: {...}}`              | `{type: function, name, parameters}`       |
 | Tool call         | `tool_use {id, name, input}`                                        | `tool_calls[{id, function}]`                     | `function_call {call_id, name, arguments}` |
 | Tool result       | `tool_result` in a user turn                                        | `role: tool` message                             | `function_call_output`                     |
@@ -1033,18 +1083,26 @@ type Block = Text | Image | Document | ToolCall | ToolResult | Reasoning;
 | Usage             | `input_tokens` excludes cache                                       | `prompt_tokens` includes cache                   | `input_tokens` includes cache              |
 | Stream            | `message_start`, `content_block_*`, `message_delta`, `message_stop` | `chat.completion.chunk`, `[DONE]`                | `response.*` events, `response.completed`  |
 
-**Rules from current Claude models** when the target is Claude:
+**Rules from current Claude models,** recorded per model in `config/models.yaml`:
 
-- Drop `temperature`, `top_p` and `top_k`.
+- Drop `temperature` and `top_p`.
 - Do not force `tool_choice` on Opus 5.5, Sonnet 5.5 or Fable 5.2.
-- Do not end with an assistant prefill.
-- Thinking cannot be turned off on Opus 5.5, so an effort of `none` maps to `low`.
+- A request cannot end with an assistant prefill, so the text moves into a user message asking Claude to continue.
+- Thinking cannot be turned off on Opus 5.5, so an effort of `none` becomes `low`.
 - If `max_tokens` is missing, use 16,000 for non-streaming and 64,000 for streaming, capped by the model.
-- Use top-level automatic caching on translated requests.
+- Use top-level automatic caching on first-party accounts, and an explicit marker on the system prompt elsewhere.
 
-Anthropic's own OpenAI-compatible endpoint is **not** used. Its docs say it is "not considered a long-term or production-ready solution for most use cases", and prompt caching is not supported through it.
+**Other mappings:**
 
-**What does not translate:** provider server tools and the MCP connector restrict a request to that provider. Reasoning artifacts are never sent to a different provider.
+- A client's reasoning effort is sent only to models the catalog lists, using the closest level each accepts.
+- Tool names that a provider would reject are shortened with a hash and mapped back. Responses `namespace` tools are flattened the same way.
+- Gemini gets tool schemas reduced to the keywords it documents, and its thought signatures are kept and returned.
+- Claude Code's attribution line and `metadata` are removed. Deferred tools stay hidden until a `tool_reference` has loaded them.
+- Anthropic's own OpenAI-compatible endpoint is **not** used. Its docs say it is "not considered a long-term or production-ready solution for most use cases".
+
+**Reasoning artifacts** are never sent to a different provider. When a client in another format cannot carry them, the gateway keeps them for six hours, keyed by the tool call they led to, and returns them only to the account that produced them. Providers need them back during a tool loop. They stay in memory and are never logged.
+
+**What does not translate:** provider-run tools and the MCP connector. A request that depends on them stays with that provider.
 
 ### 8.14 HTTP API
 
@@ -1148,7 +1206,7 @@ CREATE TABLE events (
 );
 ```
 
-Phase 3 adds `session_pins`. Phase 5 adds `client_keys`, so keys can be managed from the dashboard.
+`session_pins` holds each conversation's current target. Phase 5 adds `client_keys`, so keys can be managed from the dashboard.
 
 **Retention (Phase 5).** A daily job keeps `requests` and `attempts` for 90 days, and aggregated daily usage for longer.
 
@@ -1186,20 +1244,20 @@ Spend is an atomic `INSERT ... ON DUPLICATE KEY UPDATE`. Ledger writes go throug
 
 The VPS holds real API keys and is reachable from the internet, so security is part of Phase 1.
 
-| Threat                          | Control                                                                                                                                                                                         |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stranger calls the gateway      | Every `/v1/*` route needs a client key of at least 32 random characters, checked before the body is read. Keys are compared as SHA-256 digests in constant time.                                |
-| Key guessing                    | Failed authentication is throttled per IP.                                                                                                                                                      |
-| A leaked client key burns money | Per-client `rpm` and concurrency limits, per-account budgets, one key per client so one can be revoked alone.                                                                                   |
-| Traffic interception            | TLS at Caddy or Nginx. The gateway port is not published to the internet.                                                                                                                       |
-| Secrets in logs                 | Pino redacts `authorization`, `x-api-key` and related headers. Prompts and completions are never logged. Stored session identifiers are hashes.                                                 |
-| Secrets in git                  | `.env` is ignored. The config rejects inline secrets. CI can add a secret scan.                                                                                                                 |
-| Admin API exposure              | A separate admin key, and the reverse proxy blocks `/router/*` from the internet, except `/router/edge/*`, which needs an `edge: true` client key. Use an SSH tunnel or Tailscale for the rest. |
-| Container escape                | Runs as a non-root user with a read-only filesystem, no capabilities, and `no-new-privileges`.                                                                                                  |
-| Dependency compromise           | Few dependencies, locked versions, frozen installs, delayed adoption of new releases.                                                                                                           |
-| Subscription tokens             | The Claude token never reaches the VPS ([section 8.12](#812-the-edge-phase-2)). ChatGPT tokens (Phase 4) sit in an owner-only file and are only sent to OpenAI.                                 |
-| Other programs using the edge   | It listens on loopback only, needs its own key for model requests, and refuses browser origins and unexpected `Host` values.                                                                    |
-| Request loops and abuse         | Hop guard, body size limit and request deadline.                                                                                                                                                |
+| Threat                          | Control                                                                                                                                                                                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Stranger calls the gateway      | Every `/v1/*` route needs a client key of at least 32 random characters, checked before the body is read. Keys are compared as SHA-256 digests in constant time.                                                                                 |
+| Key guessing                    | Failed authentication is throttled per IP.                                                                                                                                                                                                       |
+| A leaked client key burns money | Per-client `rpm` and concurrency limits, per-account budgets, one key per client so one can be revoked alone.                                                                                                                                    |
+| Traffic interception            | TLS at Caddy or Nginx. The gateway port is not published to the internet.                                                                                                                                                                        |
+| Secrets in logs                 | Pino redacts `authorization`, `x-api-key` and related headers. Prompts and completions are never logged. Stored session identifiers are hashes.                                                                                                  |
+| Secrets in git                  | `.env` is ignored. The config rejects inline secrets. CI can add a secret scan.                                                                                                                                                                  |
+| Admin API exposure              | A separate admin key, and the reverse proxy blocks `/router/*` from the internet, except `/router/edge/*`, which needs an `edge: true` client key, and `/router/codex/*`, which needs a client key. Use an SSH tunnel or Tailscale for the rest. |
+| Container escape                | Runs as a non-root user with a read-only filesystem, no capabilities, and `no-new-privileges`.                                                                                                                                                   |
+| Dependency compromise           | Few dependencies, locked versions, frozen installs, delayed adoption of new releases.                                                                                                                                                            |
+| Subscription tokens             | The Claude token never reaches the VPS ([section 8.12](#812-the-edge-phase-2)). ChatGPT tokens (Phase 4) sit in an owner-only file and are only sent to OpenAI.                                                                                  |
+| Other programs using the edge   | It listens on loopback only, needs its own key for model requests, and refuses browser origins and unexpected `Host` values.                                                                                                                     |
+| Request loops and abuse         | Hop guard, body size limit and request deadline.                                                                                                                                                                                                 |
 
 The host itself needs the usual care: SSH keys only, a firewall allowing only 22, 80 and 443, and automatic security updates.
 
@@ -1243,15 +1301,16 @@ Access is protected by a single-user login, and it can additionally sit behind T
 
 ### 8.20 Testing
 
-| Level                  | What it covers                                                                                                                                                           |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Unit**               | Resolver, planner, classifier, quota state machine (fake clock), SSE parser, budgets, notices.                                                                           |
-| **End to end**         | The real gateway against a scriptable fake upstream, over real HTTP: streaming, failover, fallback, mid-stream failure, keep-alives and client disconnects.              |
-| **Contract**           | The official `openai` and `@anthropic-ai/sdk` packages as clients, for streaming, tools and error handling.                                                              |
-| **Database**           | Migrations and budget counters against real MySQL in CI.                                                                                                                 |
-| **Fixtures**           | Recorded, scrubbed upstream responses from Phase 0, including your New API instance.                                                                                     |
-| **Client smoke tests** | OpenCode, Pi, Open WebUI, and later Codex, run by hand at each release. `pnpm smoke:claude-code` runs the real Claude Code CLI with a fake login and no outside network. |
-| **Load (Phase 5)**     | Added latency and memory per stream against the fake upstream.                                                                                                           |
+| Level                  | What it covers                                                                                                                                                                                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Unit**               | Resolver, planner, classifier, quota state machine (fake clock), SSE parser, budgets, notices.                                                                                                                                                    |
+| **End to end**         | The real gateway against a scriptable fake upstream, over real HTTP: streaming, failover, fallback, mid-stream failure, keep-alives and client disconnects.                                                                                       |
+| **Contract**           | The official `openai` and `@anthropic-ai/sdk` packages as clients, for streaming, tools and error handling.                                                                                                                                       |
+| **Database**           | Migrations and budget counters against real MySQL in CI.                                                                                                                                                                                          |
+| **Fixtures**           | Recorded, scrubbed upstream responses from Phase 0, including your New API instance.                                                                                                                                                              |
+| **Client smoke tests** | OpenCode, Pi, Open WebUI, and later Codex, run by hand at each release. `pnpm smoke:claude-code`, `pnpm smoke:codex` and `pnpm smoke:clients` run the real Claude Code, Codex, OpenCode and Pi CLIs with fake credentials and no outside network. |
+| **Canary**             | A daily GitHub Actions run of the Claude Code and Codex smoke tests against each client's newest release.                                                                                                                                         |
+| **Load (Phase 5)**     | Added latency and memory per stream against the fake upstream.                                                                                                                                                                                    |
 
 `pnpm demo` runs the whole fallback story locally with fake upstreams and no credentials.
 
@@ -1419,6 +1478,9 @@ flowchart LR
 | D15 | The gateway sends the edge a step list                  | Routing rules inside the edge            | Routing policy stays in one config file, and the edge keeps working from its saved copy.                                                                                                         |
 | D16 | A separate key between Claude Code and the edge         | Trusting anything on loopback            | The edge holds a key that can spend money. `ANTHROPIC_CUSTOM_HEADERS` adds the check without replacing the Claude login.                                                                         |
 | D17 | Replace `model` in the original bytes                   | Parse and re-encode the JSON             | It guarantees that nothing else changes, which keeps prompt caching and signatures intact.                                                                                                       |
+| D18 | Try the client's own format first within a tier         | Always following the listed order        | Native targets keep prompt caching and reasoning. `prefer_same_format: false` restores the listed order.                                                                                         |
+| D19 | Keep reasoning on the gateway across formats            | Hiding it in fake thinking signatures    | Clients stay valid if the conversation returns to its original provider, which would reject a made-up signature.                                                                                 |
+| D20 | Write our own Codex catalog instructions                | Copying OpenAI's prompt                  | The catalog needs instructions, a tier can be any provider's model, and a short general prompt is easy to maintain.                                                                              |
 
 ---
 
@@ -1434,7 +1496,8 @@ flowchart LR
 | **The VPS is a single point of failure.**                                                                                                                | Restart policies and an uptime monitor now, Stage 3 later. Claude Code's plan traffic keeps working regardless.                                      |
 | **Third-party gateways differ or misreport models.**                                                                                                     | Compat profiles, defensive classification, trust levels, and a mismatch log.                                                                         |
 | **Fallback quietly lowers quality in long agent runs.**                                                                                                  | Notes, headers and push notifications, plus `X-LLMR-No-Fallback` where quality matters more than completion.                                         |
-| **Translation quality differs across providers** (Phase 3).                                                                                              | Pins limit switching, and golden tests cover the codecs.                                                                                             |
+| **Translation quality differs across providers.**                                                                                                        | Pins limit switching, golden tests cover every pair, and real-client smoke tests cover tool loops.                                                   |
+| **Anthropic does not support Claude Code on non-Claude models,** so a release could change what it needs.                                                | A daily canary runs the newest Claude Code and Codex. Claude targets are still tried first for Claude Code.                                          |
 | **Metered spend surprises.**                                                                                                                             | Budgets on by default, notification on the first metered use each day, and provider-side caps.                                                       |
 
 **Open questions for you:**
@@ -1608,6 +1671,7 @@ Codex keeps its normal ChatGPT login by default. Add the provider to `~/.codex/c
 [model_providers.llmr]
 name = "llm-router"
 base_url = "https://llm.example.com/v1"
+model_catalog_url = "https://llm.example.com/router/codex/models"
 wire_api = "responses"
 env_key = "LLMR_KEY_CODEX"
 requires_openai_auth = false
@@ -1618,10 +1682,10 @@ Then create `~/.codex/llmr.config.toml`:
 ```toml
 model_provider = "llmr"
 model = "frontier"
-model_catalog_json = "/absolute/path/to/llmr-models.json"
+web_search = "disabled"
 ```
 
-Run it with `codex --profile llmr`.
+Run it with `codex --profile llmr`. The catalog offers each tier as a model. Web search runs on OpenAI's side, so keep it disabled unless every target in the tier is an OpenAI account.
 
 ---
 
@@ -1666,7 +1730,9 @@ Read on 2026-11-17 and 2026-11-18.
 **OpenAI**
 
 - Sign in with ChatGPT: https://developers.openai.com/siwc/token-sharing-open-source and its pages `self-hosted-vms`, `sign-in`, `profiles-and-sessions`, `token-reference`, `models-and-inference`, `preview-limitations`, `errors-and-recovery`
-- Codex configuration and gateways: https://learn.chatgpt.com/docs/config-file/config-reference, https://learn.chatgpt.com/docs/config-file/config-advanced, https://learn.chatgpt.com/codex/enterprise/connect-to-a-gateway, https://learn.chatgpt.com/codex/enterprise/gateway-compatibility, https://learn.chatgpt.com/codex/enterprise/roll-out-a-gateway
+- Responses API and models: https://developers.openai.com/api/reference/resources/responses/methods/create, https://developers.openai.com/api/docs/guides/latest-model, https://developers.openai.com/api/docs/guides/reasoning, https://developers.openai.com/api/docs/pricing
+- Codex source, version 0.168.0: https://github.com/openai/codex/tree/rust-v0.168.0/codex-rs
+- Codex configuration and gateways: https://learn.chatgpt.com/docs/config-file/config-reference, https://learn.chatgpt.com/docs/config-file/config-advanced, https://learn.chatgpt.com/codex/enterprise/connect-to-a-gateway, https://learn.chatgpt.com/codex/enterprise/gateway-compatibility, https://learn.chatgpt.com/codex/enterprise/roll-out-a-gateway, https://learn.chatgpt.com/codex/enterprise/gateway-compatibility, https://learn.chatgpt.com/codex/enterprise/roll-out-a-gateway
 - Supported countries: https://developers.openai.com/api/docs/supported-countries
 
 **Google**
