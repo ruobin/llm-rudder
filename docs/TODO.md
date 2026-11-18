@@ -10,7 +10,7 @@ This is the working checklist. [`DESIGN.md`](DESIGN.md) explains why. Each phase
 | [1](#phase-1--mvp-gateway-on-the-vps)     | MVP gateway on the VPS                | ~1 week    | Code done; deployment pending |
 | [2](#phase-2--claude-code-lane)           | Claude Code lane                      | ~1 week    | Code done; real login pending |
 | [3](#phase-3--translation-codex-and-pins) | Translation, Codex and pins           | 2–3 weeks  | Code done; real keys pending  |
-| [4](#phase-4--chatgpt-plan)               | ChatGPT plan                          | ~1 week    | Not started                   |
+| [4](#phase-4--chatgpt-plan)               | ChatGPT plan                          | ~1 week    | Code done; real plan pending  |
 | [5](#phase-5--dashboard-and-hardening)    | Dashboard and hardening               | 2–3 weeks  | Not started                   |
 | [6](#phase-6--scale)                      | Scale                                 | Open-ended | Not started                   |
 
@@ -45,7 +45,7 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 
 **ChatGPT plan** (can wait until Phase 4)
 
-- [ ] **(you)** Decide whether the repository can become public and open source.
+- [x] **(you)** Decide whether the repository can become public and open source.
 - [ ] Test sign-in on a laptop, credential transfer to the VPS, and a token refresh from the VPS.
 
 **Clients**
@@ -189,23 +189,25 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 
 **Goal:** your ChatGPT plan serves every client.
 
-- [ ] **(you)** Make the repository public and add an open-source license
-- [ ] Re-check OpenAI's Sign in with ChatGPT docs
-- [ ] `llmr login chatgpt` on the laptop: PKCE, loopback callback, ID-token validation
-- [ ] VPS host ID, created before the credential transfer
-- [ ] `llmr credentials push` over SSH, keeping the VPS host ID
-- [ ] Owner-only credential file, serialized token refresh, and `auth_required` handling
-- [ ] `chatgpt-plan` account: `store: false`, `stream: true`, and removal of unsupported fields
-- [ ] Unknown-reset backoff for usage limits
-- [ ] Limit errors that arrive mid-stream as `response.failed`
-- [ ] Model list from the plan
-- [ ] Per-app cap guidance in the setup docs
+- [x] MIT license
+- [ ] **(you)** Make the repository public, before turning the account on
+- [x] Re-check OpenAI's Sign in with ChatGPT docs
+- [x] `llmr-edge chatgpt login` on the laptop: PKCE, loopback callback, ID-token validation
+- [x] VPS host ID, created before the credential transfer
+- [x] `llmr-edge chatgpt push` over SSH, keeping the VPS host ID
+- [x] Owner-only credential file, serialized token refresh, and `auth_required` handling
+- [x] `chatgpt-plan` account: `store: false`, `stream: true`, namespaced tools, and removal of unsupported fields
+- [x] Unknown-reset backoff for usage limits
+- [x] Limit errors that arrive mid-stream as `response.failed`
+- [x] Model list from the plan
+- [x] Per-app cap guidance in the setup docs
+- [ ] **(you)** Sign in with your real account, push to the VPS, and set this app's usage limit
 
 **Exit criteria**
 
-- [ ] OpenCode, the chat UI and Codex are served from the plan.
-- [ ] When the plan reaches a limit, traffic moves to the next target and comes back later.
-- [ ] Token refresh works unattended for at least a week.
+- [~] OpenCode, the chat UI and Codex are served from the plan. The real OpenCode, Pi and Codex clients pass against a fake OpenAI. A real plan and the chat UI are untested.
+- [~] When the plan reaches a limit, traffic moves to the next target and comes back later. Tested against a fake OpenAI.
+- [~] Token refresh works unattended for at least a week. An eight-day run with a simulated clock and rotating tokens passes. It still needs a real week on the VPS.
 
 ---
 

@@ -2,7 +2,7 @@
 
 A personal LLM gateway. Clients ask for `frontier`, `medium` or `flash`. The gateway picks a real model from your API keys and OpenAI-compatible gateways, moves to the next one when a target fails or runs out of quota, and drops to another tier with a warning instead of failing the task.
 
-**Status: Phases 1 to 3 are built.** The gateway serves the OpenAI Chat Completions and Responses APIs and Anthropic's Messages API, and translates between them, so any client can use any model. The real OpenCode, Pi, Claude Code and Codex command-line clients have been tested through it with fake providers, and chat UIs use the same Chat Completions API. A small local helper keeps Claude Code on your Claude plan and moves it to the gateway when the plan runs out. None of this has run against real provider accounts yet. The ChatGPT plan comes in a later phase. See [the design](docs/DESIGN.md) and [the to-do list](docs/TODO.md).
+**Status: Phases 1 to 4 are built.** The gateway serves the OpenAI Chat Completions and Responses APIs and Anthropic's Messages API, and translates between them, so any client can use any model. The real OpenCode, Pi, Claude Code and Codex command-line clients have been tested through it with fake providers, and chat UIs use the same Chat Completions API. A small local helper keeps Claude Code on your Claude plan and moves it to the gateway when the plan runs out, and your ChatGPT plan can serve every client. None of this has run against real provider accounts yet. See [the design](docs/DESIGN.md) and [the to-do list](docs/TODO.md).
 
 ## Try it locally
 
@@ -103,6 +103,33 @@ web_search = "disabled"
 
 Then run `codex --profile llmr`.
 
+## Use your ChatGPT plan
+
+An eligible ChatGPT Plus or Pro plan can serve every client, through OpenAI's [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source) for open-source apps. This has only been tested against fake OpenAI servers so far.
+
+Before you turn it on:
+
+- **Use a public, open-source copy of this project.** OpenAI's guide covers open-source and locally hosted apps, and asks paid or hosted services to apply separately.
+- **Keep it to yourself.** OpenAI's guide does not cover a server that forwards other people's requests. Do not give anyone else a key that can reach this account. A client's `allow_accounts` setting limits which accounts its key can use.
+
+In `config/config.yaml`, set `enabled: true` under `chatgpt-plan`, check that the models in your tiers are on your plan, and restart with `docker compose up -d gateway`. Then, on your own computer, with `llmr-edge` installed as described above:
+
+```bash
+llmr-edge chatgpt login                # Continue with ChatGPT in your browser
+llmr-edge chatgpt push root@your-vps   # move the sign-in to the VPS over SSH
+llmr-edge chatgpt status --for root@your-vps
+```
+
+These commands assume the project is in `/opt/llm-router`. Use `--dir` if it is elsewhere. After the push, the VPS keeps the sign-in renewed and your computer no longer holds its tokens. The gateway picks up the new sign-in within a few seconds.
+
+**Set a limit for this app.** In [ChatGPT settings, under Usage](https://chatgpt.com/settings/usage), you can cap this app at 10% to 100% of your weekly usage and choose whether it may use credits. On Plus, the five-hour limit is shared with every other app you use with ChatGPT.
+
+**When the plan reaches a limit,** OpenAI gives no reset time. The gateway moves on to the next target, leaves the plan alone for 15 minutes, and then lets one request check it, doubling the wait up to 4 hours while it stays out. You get a notification with a link to your usage settings.
+
+**If you are told to sign in again,** run `llmr-edge chatgpt login --for root@your-vps`. To stop using the plan, run `llmr-edge chatgpt logout --for root@your-vps`. If you think the sign-in was exposed, also disconnect the app in ChatGPT settings.
+
+The plan route does not accept `max_tokens`, `temperature` or `top_p`, so the gateway leaves them out. Requests that need stored conversation state, files uploaded by ID, or hosted tools other than web search go to another target.
+
 ## Develop
 
 ```bash
@@ -114,3 +141,7 @@ pnpm smoke:clients       # the same for OpenCode and Pi
 ```
 
 Tests use fake upstreams. To include the MySQL tests, set `TEST_DATABASE_URL`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

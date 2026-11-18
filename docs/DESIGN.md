@@ -2,7 +2,7 @@
 
 |           |                                                                                                                                                                |
 | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status    | Draft 2, updated 2026-11-18 with Phases 1 to 3 as built. It replaces the local-first Python Draft 1, which stays in git history.                               |
+| Status    | Draft 2, updated 2026-11-18 with Phases 1 to 4 as built. It replaces the local-first Python Draft 1, which stays in git history.                               |
 | Scope     | A personal model gateway on your own VPS, with a phased path to a production-grade service                                                                     |
 | Work plan | [`TODO.md`](TODO.md) splits the work into phases with checklists and exit criteria.                                                                            |
 | Reference | [`ROUTER_DESIGN.md`](ROUTER_DESIGN.md), an earlier proposal by another agent. [Appendix B](#appendix-b-what-changed) lists what this design keeps and changes. |
@@ -120,11 +120,11 @@ The tension in Anthropic's wording remains even for a local helper. If you want 
 - OpenAI's route is for "open-source and locally hosted apps". Its VM guide covers this case: "when you run an open-source app on a remote virtual machine".
 - Sign-in uses a loopback callback on `127.0.0.1`, which "reaches the computer running the browser, not the remote VM". There is no documented device-code flow. So you sign in on your laptop and transfer the protected credential file over SSH. The VM keeps its own host ID and "owns" later refreshes.
 - Access tokens last one hour. Refresh tokens last 30 days and rotate on every refresh, so refreshes must be serialized.
-- Inference is `POST https://api.openai.com/v1/responses` with `store: false` and `stream: true`. Many fields and built-in tools are rejected. Function and custom tools work.
+- Inference is `POST https://api.openai.com/v1/responses` with `store: false` and `stream: true`. Many fields and built-in tools are rejected. Function and custom tools must be grouped in namespaces or sent as `additional_tools` items. Web search depends on the model and account.
 - A usage limit is `429 subscription_sharing_usage_limit_exceeded`, with **no reset time**. It can also arrive mid-stream as `response.failed`.
 - The docs do **not** address a server that forwards other clients' requests with your token, or who may reach that server over the network. The design keeps it strictly single-user and treats this as an open risk.
 
-**What the design does.** Phase 4 adds a `chatgpt-plan` account. It requires this repository to be public and open source before it is switched on.
+**What the design does.** The `chatgpt-plan` account is built and off by default ([section 8.13](#813-passthrough-and-translation)). Turn it on only in a public, open-source copy of this project, for your own use.
 
 ### 3.3 Gemini plan
 
@@ -450,9 +450,10 @@ llm-router/
 │   │   ├── src/
 │   │   │   ├── main.ts          # process entry point
 │   │   │   ├── app.ts           # builds the Fastify app (also used by tests)
-│   │   │   ├── cli.ts           # keygen, check-config
+│   │   │   ├── cli.ts           # keygen, check-config, ChatGPT sign-in commands
 │   │   │   ├── runtime.ts       # wires the services together
 │   │   │   ├── dev/             # fake upstream and the demo
+│   │   │   ├── chatgpt/         # the ChatGPT sign-in held on the VPS
 │   │   │   ├── config/          # Zod schema, YAML loader, compat profiles
 │   │   │   ├── auth/            # client keys, rate limits, failed-auth throttle
 │   │   │   ├── ingress/         # chat, messages, responses, edge and admin routes
@@ -467,10 +468,10 @@ llm-router/
 │   │   │   └── db/              # Drizzle schema and migrations runner
 │   │   ├── drizzle/             # generated SQL migrations
 │   │   └── test/                # unit and end-to-end tests, fake upstream
-│   ├── edge/                    # llmr-edge, the local helper for Claude Code
+│   ├── edge/                    # llmr-edge: Claude Code helper and ChatGPT sign-in
 │   └── dashboard/               # Phase 5: Next.js
 ├── packages/
-│   └── shared/                  # header rules, byte-exact JSON edits, edge protocol
+│   └── shared/                  # header rules, JSON edits, edge protocol, ChatGPT sign-in types
 ├── config/                      # example config and pricing
 ├── deploy/                      # Dockerfile, Caddyfile, Nginx example
 ├── docs/
@@ -627,7 +628,7 @@ routing:
 models_file: models.yaml # what each model accepts
 ```
 
-**Added in Phase 4:** `chatgpt-plan: { kind: chatgpt_plan, cost_class: prepaid }`.
+**Added in Phase 4:** `chatgpt-plan: { kind: chatgpt_plan, cost_class: prepaid, trust: first_party, enabled: false }`. It has no URL, key or budget. Its sign-in is stored in the gateway's state directory.
 
 **Validation.** Config that breaks these rules does not load:
 
@@ -840,6 +841,8 @@ Classification is a pure function, so every rule has a unit test. It runs on HTT
 | `refusal`            | Content filter, New API `sensitive_words_detected`, `prompt_blocked`                                                                                                                                   | **No.** The router does not shop for a model that will comply. | None.                                                                                    |
 | `mid_stream_failure` | Any failure after the commit point                                                                                                                                                                     | No                                                             | Model `cooldown`.                                                                        |
 
+Errors also carry a scope: the account, one model, or only this request. The ChatGPT plan's codes are listed in [section 8.13](#chatgpt-plan-phase-4).
+
 ### 8.8 Quota state
 
 ```ts
@@ -870,6 +873,8 @@ stateDiagram-v2
 
 - **Probing.** After a reset, the next real request is the probe. No synthetic requests are sent. Only one probe runs at a time; others keep using the fallback.
 - **Persistence.** Long-lived states (`exhausted`, `backoff`, `disabled`) are written to MySQL, so a restart does not hammer an exhausted account. Short cooldowns stay in memory.
+- **Account pauses.** A temporary failure that covers a whole account pauses it for 15 seconds, doubling up to 5 minutes. It does not shorten a usage-limit backoff that is being rechecked.
+- **Failures of one request** change no state, so one unsupported input cannot block other requests.
 
 ### 8.9 Tier fallback and warnings
 
@@ -1104,6 +1109,59 @@ type Block = Text | Image | Document | ToolCall | ToolResult | Reasoning;
 
 **What does not translate:** provider-run tools and the MCP connector. A request that depends on them stays with that provider.
 
+#### ChatGPT plan (Phase 4)
+
+A `chatgpt_plan` account uses OpenAI's Sign in with ChatGPT instead of an API key. These rules come from OpenAI's guide for open-source apps, last read on 2026-11-18.
+
+**Sign-in and transfer.** OpenAI's callback address only reaches the computer running the browser, so you sign in on your laptop.
+
+```mermaid
+sequenceDiagram
+  participant You as Browser
+  participant Edge as llmr-edge (laptop)
+  participant OpenAI as auth.openai.com
+  participant VPS as Gateway (VPS)
+  Edge->>You: Open the authorize page
+  You->>OpenAI: Continue with ChatGPT
+  OpenAI->>Edge: Code, on 127.0.0.1
+  Edge->>OpenAI: Exchange code with PKCE
+  OpenAI->>Edge: ID, access and refresh tokens
+  Edge->>Edge: Validate the ID token and plan scope
+  Edge->>VPS: Send the sign-in over SSH
+  VPS->>VPS: Keep its own host ID and save the file
+  Edge->>Edge: Delete its access and refresh tokens
+```
+
+- The ID token's signature, issuer, audience, expiry and nonce are checked. A returning sign-in must be the same account and client.
+- Plan use needs the `chatgpt.tokens.use.direct` scope. Without it only the registration is kept, and the next login asks for consent again.
+- If OpenAI rejects the code with `invalid_grant`, login starts one fresh authorization with the issued client ID.
+- The VPS creates its host ID before it saves a transferred sign-in. `llmr-edge chatgpt login --for TARGET` reads that ID, so later authorizations use the VPS's own host ID, and then sends the result.
+
+**Storage.** Each sign-in is `/state/chatgpt/<account>.json`, written atomically with mode `0600` in a `0700` folder. `/state` is a Docker volume and the only writable path that survives an update. The gateway looks for a replaced file every 5 seconds, so a new sign-in needs no restart.
+
+**Renewal.** Only the VPS refreshes. One refresh runs at a time, and its rotated tokens are saved together. A token is renewed 5 minutes before expiry, unless `earliest_refresh_at` is later and the token is still valid. After a `401`, the request is retried once with a newer token. Every 15 minutes the gateway checks whether the plan's model list is 6 hours old. Reading it needs a current token, which also keeps an idle session alive. One gateway process owns each sign-in, because refresh tokens rotate. Running several instances needs the shared lock in [section 10](#10-scaling-plan).
+
+| Refresh result                                                                                                                          | What happens                                        |
+| --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `invalid_grant`, `invalid_refresh_token`, `token_expired`, `refresh_token_expired`, `refresh_token_invalidated`, `refresh_token_reused` | Tokens are cleared, the account stops, you are told |
+| `invalid_client`                                                                                                                        | The account stops, tokens stay, you are told        |
+| Network failure or any other error                                                                                                      | Tokens stay. A still-valid token keeps being used   |
+
+**Requests.** Every request is rewritten, including those from Responses clients, because the plan has its own rules. It always sets `store: false` and `stream: true`, sends instructions as developer messages, and leaves out `max_output_tokens`, `temperature` and `top_p`. Client tools go in one namespace called `tools`, which is removed from the calls clients receive. A forced tool becomes the only tool offered, with `tool_choice: required`, because `tool_choice` cannot name a namespaced tool. A client that did not ask to stream gets one response assembled from the stream, and only `response.completed` or `response.incomplete` counts as an ending.
+
+**Routing.** The plan keeps its configured place in a tier even though most clients speak another format. It is skipped when nobody is signed in, when its model list lacks the model, and for requests that need stored state, files uploaded by ID, or hosted tools other than web search.
+
+| Error                                                                                                    | Treated as                | Effect                                                        |
+| -------------------------------------------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------- |
+| `subscription_sharing_usage_limit_exceeded`, over HTTP or in `response.failed`                           | Quota, reset unknown      | Backoff from 15 minutes to 4 hours, with one probe at a time  |
+| `subscription_sharing_usage_unavailable`, `subscription_sharing_user_unavailable`, or `503` with no code | Temporary account problem | Account pause                                                 |
+| `subscription_sharing_unsupported_capability`                                                            | This request              | Next target, unless `param` is `model`, which rests the model |
+| `subscription_sharing_route_not_supported`                                                               | Unsupported               | The model rests for 10 minutes                                |
+| `subscription_sharing_user_not_eligible`, `chatpass_v2_*`, `403` with no code                            | Account rejected          | Account stops, and you are told why                           |
+| `subscription_sharing_invalid_user` or `401`, after one renewal and retry                                | Account rejected          | Account stops, and you are asked to sign in again             |
+
+A new sign-in clears these states. A restart also clears a stopped account that still has tokens, so it gets another try. Usage limits are kept across restarts.
+
 ### 8.14 HTTP API
 
 | Method and path                                     | Purpose                                         | Auth          | Phase |
@@ -1255,7 +1313,7 @@ The VPS holds real API keys and is reachable from the internet, so security is p
 | Admin API exposure              | A separate admin key, and the reverse proxy blocks `/router/*` from the internet, except `/router/edge/*`, which needs an `edge: true` client key, and `/router/codex/*`, which needs a client key. Use an SSH tunnel or Tailscale for the rest. |
 | Container escape                | Runs as a non-root user with a read-only filesystem, no capabilities, and `no-new-privileges`.                                                                                                                                                   |
 | Dependency compromise           | Few dependencies, locked versions, frozen installs, delayed adoption of new releases.                                                                                                                                                            |
-| Subscription tokens             | The Claude token never reaches the VPS ([section 8.12](#812-the-edge-phase-2)). ChatGPT tokens (Phase 4) sit in an owner-only file and are only sent to OpenAI.                                                                                  |
+| Subscription tokens             | The Claude token never reaches the VPS ([section 8.12](#812-the-edge-phase-2)). ChatGPT tokens sit in an owner-only file in the gateway's state volume and are only sent to OpenAI. They never appear in logs or the status page.                |
 | Other programs using the edge   | It listens on loopback only, needs its own key for model requests, and refuses browser origins and unexpected `Host` values.                                                                                                                     |
 | Request loops and abuse         | Hop guard, body size limit and request deadline.                                                                                                                                                                                                 |
 
@@ -1328,6 +1386,7 @@ flowchart TB
     RP -->|"chat.example.com"| UI["open-webui:8080"]
     UI --> GW
     GW --> DB[("mysql:3306")]
+    GW --- STATE[("state volume")]
     DB --- VOL[("mysql volume")]
     UI --- VOL2[("webui volume")]
   end
@@ -1396,6 +1455,7 @@ Migrations run at startup, are additive, and are compatible with the previous re
 
 - A nightly `mysqldump`, compressed and copied off the VPS.
 - `config/` is in version control. `.env` is stored in your password manager.
+- The state volume holds the ChatGPT sign-in. Leave it out of backups. If it is lost, sign in again.
 - Restore is tested once per phase.
 
 ---
@@ -1504,9 +1564,8 @@ flowchart LR
 
 1. **When `frontier` runs out, should paid API keys be used before dropping to `medium`?** The default is yes, within budget (`prefer: quality`). Choose `prefer: cost` to drop first and spend last.
 2. **Which domain or subdomain should the gateway use, and does it share the VPS with New API?** That decides between Caddy and your existing Nginx.
-3. **Are you comfortable making this repository public before Phase 4?** OpenAI's documented VM route is for open-source apps. The repository starts private.
-4. **Which Google AI plan do you have?** It sets the Gemini credit budget ($10, $40 or $100 a month).
-5. **Which chat UI do you use?** The Compose file includes Open WebUI, and LibreChat works too.
+3. **Which Google AI plan do you have?** It sets the Gemini credit budget ($10, $40 or $100 a month).
+4. **Which chat UI do you use?** The Compose file includes Open WebUI, and LibreChat works too.
 
 ---
 
