@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { hashPassword } from "../../gateway/src/auth/password";
-import { niceMax, formatDuration, formatRelative, formatTime, formatUsd } from "@/lib/format";
+import {
+  niceMax,
+  formatDuration,
+  formatRelative,
+  formatTime,
+  formatUsd,
+  servedByLowerTier,
+} from "@/lib/format";
 import { LoginThrottle } from "@/lib/login-throttle";
 import { verifyPassword } from "@/lib/password";
 import { createSessionToken, isValidSessionToken, SESSION_MS } from "@/lib/session";
@@ -101,5 +108,14 @@ describe("formatting", () => {
     expect(niceMax(3)).toBe(5);
     expect(niceMax(1200)).toBe(2000);
     expect(niceMax(0.07)).toBeCloseTo(0.1);
+  });
+});
+
+describe("requests served by a lower tier", () => {
+  it("is true only when another tier answered", () => {
+    expect(servedByLowerTier({ requestedTier: "frontier", servedTier: "medium" })).toBe(true);
+    expect(servedByLowerTier({ requestedTier: "medium", servedTier: "medium" })).toBe(false);
+    expect(servedByLowerTier({ requestedTier: null, servedTier: "medium" })).toBe(false);
+    expect(servedByLowerTier({ requestedTier: "frontier", servedTier: null })).toBe(false);
   });
 });

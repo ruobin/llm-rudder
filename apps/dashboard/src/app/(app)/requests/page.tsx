@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Empty, PageHeader } from "@/components/page-header";
 import { OutcomeBadge } from "@/components/status";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Table, TD, TH } from "@/components/ui/table";
-import { formatDuration, formatTime } from "@/lib/format";
+import { formatDuration, formatTime, servedByLowerTier } from "@/lib/format";
 import { getRequests, type RequestFilters } from "@/lib/gateway";
 
 export const metadata: Metadata = { title: "Requests" };
@@ -120,7 +121,12 @@ export default async function RequestsPage({
                     <TD className="break-all">{request.requestedModel}</TD>
                     <TD className="break-all text-secondary">{request.servedTarget ?? "–"}</TD>
                     <TD>
-                      <OutcomeBadge outcome={request.outcome} />
+                      <span className="flex flex-wrap items-center gap-1">
+                        <OutcomeBadge outcome={request.outcome} />
+                        {servedByLowerTier(request) ? (
+                          <Badge tone="warning">Lower tier</Badge>
+                        ) : null}
+                      </span>
                     </TD>
                     <TD className="text-right tabular-nums">{request.attemptCount}</TD>
                     <TD className="text-right whitespace-nowrap tabular-nums">

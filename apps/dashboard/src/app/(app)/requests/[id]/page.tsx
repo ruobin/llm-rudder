@@ -5,7 +5,13 @@ import { PageHeader, Stat } from "@/components/page-header";
 import { OutcomeBadge } from "@/components/status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TD, TH } from "@/components/ui/table";
-import { formatCount, formatDuration, formatTime, formatUsd } from "@/lib/format";
+import {
+  formatCount,
+  formatDuration,
+  formatTime,
+  formatUsd,
+  servedByLowerTier,
+} from "@/lib/format";
 import { GatewayError, getRequest } from "@/lib/gateway";
 
 export const metadata: Metadata = { title: "Request" };
@@ -24,7 +30,14 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
         All requests
       </Link>
       <div className="mt-3">
-        <PageHeader title={request.requestedModel} description={formatTime(request.startedAt)}>
+        <PageHeader
+          title={request.requestedModel}
+          description={
+            servedByLowerTier(request)
+              ? `${formatTime(request.startedAt)}. ${request.requestedTier} was unavailable, so ${request.servedTier} answered.`
+              : formatTime(request.startedAt)
+          }
+        >
           <OutcomeBadge outcome={request.outcome} />
         </PageHeader>
       </div>

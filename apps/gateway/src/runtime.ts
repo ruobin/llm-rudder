@@ -106,6 +106,9 @@ function chatGptRejection(accountId: string, detail = "auth"): string {
   return `${accountId} needs a new ChatGPT sign-in (${detail}). Run: ${SIGN_IN_COMMAND}`;
 }
 
+const readableTime = (at: number) =>
+  `${new Date(at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+
 export function createRuntime(config: Config, options: RuntimeOptions = {}): Runtime {
   const now = options.now ?? Date.now;
   const log = options.log ?? createLogger();
@@ -132,7 +135,7 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
 
   const quota = new QuotaManager(now, persistence, (change) => {
     if (change.kind === "exhausted") {
-      const until = change.retryAt ? ` until ${new Date(change.retryAt).toISOString()}` : "";
+      const until = change.retryAt ? ` until ${readableTime(change.retryAt)}` : "";
       notifier.clear("account_recovered", change.accountId);
       notifier.emit(
         "account_exhausted",

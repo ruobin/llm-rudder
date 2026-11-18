@@ -57,3 +57,12 @@ export function niceMax(value: number): number {
   const step = [1, 2, 2.5, 5, 10].find((candidate) => candidate * power >= value) ?? 10;
   return step * power;
 }
+
+/** True when a lower tier answered because the requested one was unavailable. */
+export function servedByLowerTier(request: {
+  requestedTier: string | null;
+  servedTier: string | null;
+}): boolean {
+  const { requestedTier, servedTier } = request;
+  return requestedTier !== null && servedTier !== null && requestedTier !== servedTier;
+}
