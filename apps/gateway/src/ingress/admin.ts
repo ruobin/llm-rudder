@@ -18,6 +18,10 @@ export function buildStatus(runtime: Runtime) {
     draining,
     pricingVersion: config.pricing.version,
     pinnedConversations: runtime.pins.size,
+    chatgpt: [...runtime.chatgpt].map(([account, session]) => ({
+      account,
+      ...session.status(),
+    })),
     fallbacks: episodes.list().map((episode) => ({ ...episode, since: iso(episode.since) })),
     tiers: [...config.tiers.values()].map((tier) => ({
       name: tier.name,

@@ -77,6 +77,14 @@ export interface ClientProtocol {
 
 /** How one attempt talks to its upstream and reads the answer. */
 export interface UpstreamProtocol {
+  /** This upstream always streams, even when the client wants one response. */
+  streamOnly?: boolean;
+  /** Reads a stream into one response, for clients that did not ask to stream. */
+  readStream?(
+    attempt: Attempt,
+    body: AsyncIterable<Uint8Array>,
+    now: number,
+  ): Promise<CompleteReply | Classified>;
   send(
     attempt: Attempt,
     options: { stream: boolean; signal: AbortSignal },

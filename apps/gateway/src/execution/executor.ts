@@ -1,5 +1,6 @@
 import { dayPeriod } from "../billing/budgets.js";
 import { costMicroUsd, estimateUsage, priceFor } from "../billing/pricing.js";
+import { ChatGptError } from "../chatgpt/session.js";
 import type { AccountConfig } from "../config/load.js";
 import type { AttemptRecord } from "../ledger/records.js";
 import type { Plan, PlanStep } from "../routing/plan.js";
@@ -28,7 +29,13 @@ const MAX_ERROR_BODY_BYTES = 64 * 1024;
 /** A throttle this short is worth waiting out, rather than moving the conversation. */
 const MAX_HOLD_S = 10;
 /** Plan entries that say nothing about whether a target has capacity. */
-const NOT_CAPACITY_REASONS = new Set(["not_allowed", "disabled", "capability", "context"]);
+const NOT_CAPACITY_REASONS = new Set([
+  "not_allowed",
+  "disabled",
+  "signed_out",
+  "capability",
+  "context",
+]);
 const PASSTHROUGH: Record<Dialect, WireProtocol> = {
   "openai.chat": openAiChat,
   "openai.responses": openAiResponses,
@@ -36,8 +43,10 @@ const PASSTHROUGH: Record<Dialect, WireProtocol> = {
 };
 
 /** The same format passes through. Any other pair goes through the translator. */
-function upstreamProtocol(client: Dialect, upstream: Dialect): UpstreamProtocol {
-  return client === upstream ? PASSTHROUGH[client] : translatedProtocol(client, upstream);
+function upstreamProtocol(client: Dialect, account: AccountConfig): UpstreamProtocol {
+  // The ChatGPT plan has its own request rules, so even Responses clients are rewritten.
+  if (account.kind === "chatgpt_plan") return translatedProtocol(client, "chatgpt.plan");
+  return client === account.api ? PASSTHROUGH[client] : translatedProtocol(client, account.api);
 }
 
 interface UpstreamFailure {
@@ -160,7 +169,7 @@ class RequestRun {
 
       const startedAt = rt.now();
       const attempt: Attempt = { rt, ctx, target, account };
-      const upstream = upstreamProtocol(ctx.dialect, account.api);
+      const upstream = upstreamProtocol(ctx.dialect, account);
       const result = ctx.stream
         ? await this.streamAttempt(step, attempt, upstream, startedAt)
         : await this.jsonAttempt(step, attempt, upstream, startedAt);
@@ -337,6 +346,7 @@ class RequestRun {
   }
 
   private failureFromError(error: unknown, signal: AbortSignal): Classified {
+    if (error instanceof ChatGptError) return error.classified;
     const reason = signal.reason;
     if (reason instanceof AbortReason) {
       if (reason.kind === "client") {
@@ -375,10 +385,13 @@ class RequestRun {
       Math.max(1, ctx.deadlineAt - rt.now()),
     );
     try {
-      const response = await protocol.send(attempt, { stream: false, signal: controller.signal });
+      const response = await protocol.send(attempt, {
+        stream: protocol.streamOnly === true,
+        signal: controller.signal,
+      });
       result.httpStatus = response.status;
-      const text = await response.body.text();
       if (response.status >= 400) {
+        const text = await response.body.text();
         result.classified = protocol.classifyHttpError(
           response.status,
           response.headers,
@@ -388,7 +401,10 @@ class RequestRun {
         result.failure = { status: response.status, headers: response.headers, text };
         return result;
       }
-      const reply = protocol.readComplete(attempt, text, rt.now());
+      const reply =
+        protocol.streamOnly && protocol.readStream
+          ? await protocol.readStream(attempt, response.body, rt.now())
+          : protocol.readComplete(attempt, await response.body.text(), rt.now());
       if (isClassified(reply)) {
         result.classified = reply;
         return result;

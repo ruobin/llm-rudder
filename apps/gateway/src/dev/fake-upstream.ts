@@ -350,11 +350,19 @@ export function responsesToolStream(
   name: string,
   input: JsonObject,
   reasoning?: JsonObject,
+  namespace?: string,
 ): FakeStep {
   const json = JSON.stringify(input);
   const middle = Math.floor(json.length / 2);
   const index = reasoning ? 1 : 0;
-  const item = { id: "fc_fake", type: "function_call", call_id: callId, name, arguments: "" };
+  const item = {
+    id: "fc_fake",
+    type: "function_call",
+    call_id: callId,
+    name,
+    ...(namespace ? { namespace } : {}),
+    arguments: "",
+  };
   const where = { item_id: "fc_fake", output_index: index };
   return {
     type: "stream",
@@ -393,6 +401,8 @@ export class FakeUpstream {
   readonly requests: RecordedRequest[] = [];
   /** Responses whose connection closed before they finished. */
   abandoned = 0;
+  /** What GET /v1/models returns for a ChatGPT plan. */
+  planModels: JsonObject[] | null = null;
   private readonly scripts = new Map<string, FakeStep[]>();
   private readonly always = new Map<string, FakeStep>();
   private readonly sockets = new Set<Socket>();
@@ -462,6 +472,9 @@ export class FakeUpstream {
   private defaultStep(path: string, model: string, stream: boolean): FakeStep {
     const route = path.split("?")[0];
     const text = `Hello from ${model}`;
+    if (route === "/v1/models" && this.planModels) {
+      return { type: "json", body: { models: this.planModels } };
+    }
     if (route === "/v1/messages/count_tokens") {
       return { type: "json", body: { input_tokens: 123 } };
     }

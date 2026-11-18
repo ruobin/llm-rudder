@@ -35,6 +35,7 @@ const PROBE_TIMEOUT_MS = 120_000;
 const FIRST_BACKOFF_S = 900;
 const MAX_BACKOFF_S = 14_400;
 const MAX_RATE_LIMIT_S = 300;
+const FIRST_ACCOUNT_PAUSE_S = 15;
 
 const modelScope = (model: string) => `model:${model}`;
 const keyOf = (accountId: string, scope: string) => `${accountId}\u0000${scope}`;
@@ -151,6 +152,19 @@ export class QuotaManager {
     const model = modelScope(target.model);
     const detail = result.code ?? result.outcome;
 
+    // This request could not run here, which says nothing about the next one.
+    if (result.scope === "request") {
+      this.releaseProbe(target);
+      return;
+    }
+    if (
+      result.scope === "account" &&
+      (result.outcome === "rate_limited" || result.outcome === "overloaded")
+    ) {
+      this.pauseAccount(accountId, result, detail);
+      return;
+    }
+
     const cooldown = (seconds: number, failures: number) =>
       this.write(accountId, model, {
         status: "cooldown",
@@ -217,6 +231,28 @@ export class QuotaManager {
     }
   }
 
+  /** A short pause for a whole account, which grows while the failure continues. */
+  private pauseAccount(accountId: string, result: Classified, detail: string): void {
+    const previous = this.read(accountId, ACCOUNT_SCOPE);
+    if (previous?.status === "disabled") return;
+    const failures = (previous?.failures ?? 0) + 1;
+    const backoffS = Math.min(FIRST_ACCOUNT_PAUSE_S * 2 ** (failures - 1), MAX_RATE_LIMIT_S);
+    const seconds = Math.min(result.retryAfterS ?? backoffS, MAX_RATE_LIMIT_S);
+    const retryAt = this.now() + seconds * 1000;
+    if (previous && previous.status !== "cooldown") {
+      // A usage limit was being re-checked, and its longer backoff still applies.
+      const state: QuotaState = {
+        ...previous,
+        status: previous.backoffS ? "backoff" : "exhausted",
+        retryAt,
+      };
+      delete state.probeStartedAt;
+      this.write(accountId, ACCOUNT_SCOPE, state);
+      return;
+    }
+    this.write(accountId, ACCOUNT_SCOPE, { status: "cooldown", retryAt, failures, detail });
+  }
+
   /**
    * Replaces an account's limits with what an outside observer reports. Used for
    * the Claude plan, which only the local edge can see.
@@ -252,6 +288,19 @@ export class QuotaManager {
       });
     } else if (removed && limits.length === 0) {
       this.onChange?.({ kind: "recovered", accountId });
+    }
+  }
+
+  /** Stops using an account until someone fixes it. */
+  disable(accountId: string, detail: string): void {
+    this.write(accountId, ACCOUNT_SCOPE, { status: "disabled", detail });
+    this.onChange?.({ kind: "disabled", accountId, detail });
+  }
+
+  /** Lets an account be tried again without touching any usage limit it has. */
+  clearDisabled(accountId: string): void {
+    if (this.read(accountId, ACCOUNT_SCOPE)?.status === "disabled") {
+      this.remove(accountId, ACCOUNT_SCOPE);
     }
   }
 

@@ -1,8 +1,13 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { chatGptEndpoints } from "@llm-router/shared";
 import { pino } from "pino";
 import { buildApp } from "../src/app.js";
+import { importCredential } from "../src/chatgpt/session.js";
 import { parseConfig } from "../src/config/load.js";
+import { FakeChatGptAuth } from "../src/dev/fake-chatgpt.js";
 import { FakeUpstream } from "../src/dev/fake-upstream.js";
 import { MemoryPersistence, type Persistence } from "../src/ledger/records.js";
 import type { RouterEvent } from "../src/notify/notifier.js";
@@ -121,6 +126,60 @@ edge:
 timeouts: { keepalive_after_s: 30, keepalive_interval_s: 15 }
 `;
 
+/** A ChatGPT plan first, with an ordinary account behind it. */
+export const CHATGPT_CONFIG = `
+version: 1
+server: { host: 127.0.0.1, port: 0, max_body_mb: 1 }
+admin: { key_env: ADMIN_KEY }
+clients:
+  - { id: chat, key_env: CHAT_KEY, notice: text }
+  - { id: script, key_env: SCRIPT_KEY }
+  - { id: claude-code, key_env: CLAUDE_KEY }
+accounts:
+  chatgpt-plan: { kind: chatgpt_plan, cost_class: prepaid, trust: first_party }
+  backup: { base_url_env: UPSTREAM_URL, api_key_env: GATEWAY_KEY, compat: new_api, cost_class: prepaid, trust: self_hosted }
+tiers:
+  frontier:
+    targets:
+      - { account: chatgpt-plan, model: gpt-6.2-astra, effort: high }
+      - { account: backup, model: backup-model }
+  planonly:
+    targets:
+      - { account: chatgpt-plan, model: gpt-6.2-sol }
+aliases:
+  - { match: "claude-opus-*", tier: frontier }
+timeouts: { keepalive_after_s: 30, keepalive_interval_s: 15 }
+`;
+
+export const PLAN_MODEL = "gpt-6.2-sol";
+
+/** Adds a ChatGPT plan account and a tier called "plan" that uses it. */
+export const withChatGptPlan = (yaml: string): string =>
+  yaml
+    .replace(
+      "accounts:\n",
+      "accounts:\n  chatgpt-plan: { kind: chatgpt_plan, cost_class: prepaid, trust: first_party }\n",
+    )
+    .replace(
+      "tiers:\n",
+      `tiers:\n  plan: { targets: [{ account: chatgpt-plan, model: ${PLAN_MODEL} }] }\n`,
+    );
+
+/** A fake sign-in service, with a saved sign-in the gateway can use. */
+export async function startFakeSignIn() {
+  const auth = await new FakeChatGptAuth().start();
+  const stateDir = mkdtempSync(join(tmpdir(), "llmr-signin-"));
+  importCredential(stateDir, "chatgpt-plan", auth.credential(Date.now()));
+  return {
+    auth,
+    gatewayOptions: { authUrl: auth.url, stateDir },
+    close: async () => {
+      await auth.stop();
+      rmSync(stateDir, { recursive: true, force: true });
+    },
+  };
+}
+
 export const MODELS = readFileSync(new URL("../../../config/models.yaml", import.meta.url), "utf8");
 
 export const PRICING = `
@@ -152,6 +211,8 @@ export interface GatewayOptions {
   upstream?: FakeUpstream;
   persistence?: Persistence;
   now?: () => number;
+  /** Connects ChatGPT plan accounts to a fake sign-in service. */
+  chatgpt?: { authUrl: string; stateDir: string };
 }
 
 export async function startGateway(options: GatewayOptions = {}): Promise<TestGateway> {
@@ -171,6 +232,7 @@ export async function startGateway(options: GatewayOptions = {}): Promise<TestGa
       GATEWAY_KEY: "upstream-gateway-key",
       OPENAI_KEY: "upstream-openai-key",
       GEMINI_KEY: "upstream-gemini-key",
+      LLMR_CHATGPT_API_URL: upstream.url,
     },
     options.models,
   );
@@ -181,6 +243,15 @@ export async function startGateway(options: GatewayOptions = {}): Promise<TestGa
     persistence,
     sinks: [async (event) => void events.push(event)],
     ...(options.now ? { now: options.now } : {}),
+    ...(options.chatgpt
+      ? {
+          stateDir: options.chatgpt.stateDir,
+          chatGptEndpoints: chatGptEndpoints({
+            LLMR_CHATGPT_AUTH_URL: options.chatgpt.authUrl,
+            LLMR_CHATGPT_API_URL: upstream.url,
+          }),
+        }
+      : {}),
   });
   await restoreState(runtime);
   const app = buildApp(runtime);

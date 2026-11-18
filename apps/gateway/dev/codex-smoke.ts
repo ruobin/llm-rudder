@@ -20,7 +20,15 @@ import {
   responsesToolStream,
   textStream,
 } from "../src/dev/fake-upstream.js";
-import { MODELS, SCRIPT_KEY, startGateway, TRANSLATION_CONFIG } from "../test/helpers.js";
+import {
+  MODELS,
+  PLAN_MODEL,
+  SCRIPT_KEY,
+  startFakeSignIn,
+  startGateway,
+  TRANSLATION_CONFIG,
+  withChatGptPlan,
+} from "../test/helpers.js";
 
 const CODEX = process.env.CODEX_BIN ?? "codex";
 const TIMEOUT_MS = 90_000;
@@ -41,7 +49,12 @@ const codexHome = join(dir, "codex");
 const workspace = join(dir, "workspace");
 for (const path of [home, codexHome, workspace]) mkdirSync(path, { recursive: true });
 
-const gateway = await startGateway({ yaml: TRANSLATION_CONFIG, models: MODELS });
+const signIn = await startFakeSignIn();
+const gateway = await startGateway({
+  yaml: withChatGptPlan(TRANSLATION_CONFIG),
+  models: MODELS,
+  chatgpt: signIn.gatewayOptions,
+});
 writeFileSync(
   join(codexHome, "config.toml"),
   `model = "gpt"
@@ -166,6 +179,27 @@ try {
   );
   await toolLoop("gpt", GPT, "gpt-finished");
 
+  console.log("\nA tool loop on the ChatGPT plan");
+  gateway.upstream.script(
+    PLAN_MODEL,
+    responsesToolStream(PLAN_MODEL, "call_plan", "exec_command", command, undefined, "tools"),
+    responsesTextStream(PLAN_MODEL, "plan-finished"),
+  );
+  await toolLoop("plan", PLAN_MODEL, "plan-finished");
+  const planRequest = gateway.upstream.requestsFor(PLAN_MODEL).at(-1);
+  check(
+    planRequest?.headers.authorization === `Bearer ${signIn.auth.accessToken}`,
+    "it used the sign-in",
+  );
+  check(
+    planRequest?.body.store === false && planRequest.body.stream === true,
+    "it met the plan's rules",
+  );
+  check(
+    (planRequest?.body.tools as { type: string }[] | undefined)?.[0]?.type === "namespace",
+    "Codex's tools were grouped in a namespace",
+  );
+
   console.log("\nA tool loop on Claude, through translation");
   gateway.upstream.script(
     OPUS,
@@ -217,6 +251,7 @@ try {
   );
 } finally {
   await gateway.close();
+  await signIn.close();
   rmSync(dir, { recursive: true, force: true });
 }
 

@@ -22,6 +22,8 @@ export interface AnthropicRequest {
 }
 
 export interface ResponsesRequest {
+  /** Replaces the account's API key, for accounts that sign in. */
+  bearerToken?: string;
   body: Buffer;
   stream: boolean;
   signal: AbortSignal;
@@ -91,9 +93,11 @@ export class HttpUpstreamClient implements UpstreamClient {
       "content-type": "application/json",
       accept: request.stream ? "text/event-stream" : "application/json",
       "user-agent": "llm-router/0.1",
-      "x-llmr-hop": this.instanceId,
     };
-    if (account.apiKey) headers.authorization = `Bearer ${account.apiKey}`;
+    const credential = request.bearerToken ?? account.apiKey;
+    if (credential) headers.authorization = `Bearer ${credential}`;
+    // A signed-in account always talks to OpenAI itself, so no loop is possible.
+    if (!request.bearerToken) headers["x-llmr-hop"] = this.instanceId;
     const response = await request_(`${account.baseUrl}/responses`, {
       method: "POST",
       headers,

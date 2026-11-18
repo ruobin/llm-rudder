@@ -16,6 +16,8 @@ export interface EncodeTarget {
   /** The account accepts Anthropic's top-level automatic caching. */
   autoCache: boolean;
   sessionKey: string;
+  /** Set for the ChatGPT plan, which has its own request rules. */
+  planRoute?: { toolNamespace: string };
   /** Reasoning kept by the gateway for this tool call, when this target can read it. */
   replay(callId: string): unknown[] | undefined;
 }
@@ -31,6 +33,8 @@ export interface ResponseContext {
   wantsUsage: boolean;
   /** The client asked to see reasoning summaries. */
   showReasoning: boolean;
+  /** A namespace added for the upstream, which the client must not see. */
+  toolNamespace?: string;
   /** A rough input size, shown until the real count arrives. */
   inputEstimate: number;
 }

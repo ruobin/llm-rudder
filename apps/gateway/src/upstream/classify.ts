@@ -26,6 +26,7 @@ const QUOTA_CODES = new Set([
   "payment_required",
   "pre_consume_token_quota_failed",
   "project_spend_limit_exceeded",
+  "subscription_sharing_usage_limit_exceeded",
 ]);
 
 const NO_ROUTE_CODES = new Set([
@@ -33,6 +34,20 @@ const NO_ROUTE_CODES = new Set([
   "get_channel_failed",
   "model_not_available",
   "model_not_found",
+]);
+
+/** ChatGPT plan answers that retrying will not fix until something changes. */
+const ACCOUNT_REJECTED_CODES = new Set([
+  "chatpass_v2_invalid_authorization_context",
+  "chatpass_v2_scope_not_authorized",
+  "subscription_sharing_invalid_user",
+  "subscription_sharing_user_not_eligible",
+]);
+
+/** ChatGPT plan answers that a later retry may fix. */
+const PLAN_UNAVAILABLE_CODES = new Set([
+  "subscription_sharing_usage_unavailable",
+  "subscription_sharing_user_unavailable",
 ]);
 
 const QUOTA_TEXT =
@@ -48,6 +63,8 @@ interface ParsedError {
   type: string;
   status: string;
   message: string;
+  /** The request field the error is about, when the upstream says. */
+  param?: string;
   metadata: JsonObject;
 }
 
@@ -82,6 +99,7 @@ export function parseErrorObject(value: unknown): ParsedError {
         : typeof inner.detail === "string"
           ? inner.detail
           : (text ?? ""),
+    ...(typeof inner.param === "string" ? { param: inner.param } : {}),
     metadata,
   };
 }
@@ -209,7 +227,29 @@ function classifyParsed(
     };
   }
 
-  if (NO_ROUTE_CODES.has(code)) {
+  if (ACCOUNT_REJECTED_CODES.has(code)) {
+    return { ...info, outcome: "auth", retryElsewhere: true, scope: "account" };
+  }
+  if (PLAN_UNAVAILABLE_CODES.has(code)) {
+    return {
+      ...info,
+      outcome: "rate_limited",
+      retryElsewhere: true,
+      scope: "account",
+      ...(retryAfterS === undefined ? {} : { retryAfterS }),
+    };
+  }
+  if (code === "subscription_sharing_unsupported_capability") {
+    // Usually one request's input or tool, so other requests may still be fine.
+    return {
+      ...info,
+      ...(error.param ? { message: `${info.message} (${error.param})`.trim() } : {}),
+      outcome: "unsupported",
+      retryElsewhere: true,
+      scope: error.param === "model" ? "model" : "request",
+    };
+  }
+  if (NO_ROUTE_CODES.has(code) || code === "subscription_sharing_route_not_supported") {
     return { ...info, outcome: "unsupported", retryElsewhere: true, scope: "model" };
   }
 
@@ -287,6 +327,39 @@ export function classifyHttpError(
     };
   }
   return classifyParsed(status, parseErrorObject(parsed), retryAfterS, now);
+}
+
+/**
+ * Classifies a rejection from the ChatGPT plan route. It can refuse a request before
+ * the Responses API runs, with only a "detail" message and no error code.
+ */
+export function classifyChatGptHttpError(
+  status: number,
+  headers: HeaderBag,
+  rawBody: string,
+  now: number = Date.now(),
+): Classified {
+  const result = classifyHttpError(status, headers, rawBody, now);
+  if (result.code !== String(status)) return result;
+  if (status === 403) {
+    return {
+      ...result,
+      outcome: "auth",
+      retryElsewhere: true,
+      scope: "account",
+      code: "chatgpt_admission_denied",
+    };
+  }
+  if (status === 503) {
+    return {
+      ...result,
+      outcome: "rate_limited",
+      retryElsewhere: true,
+      scope: "account",
+      code: "chatgpt_unavailable",
+    };
+  }
+  return result;
 }
 
 /** Classifies an error found in a 200 response body or a stream event. */

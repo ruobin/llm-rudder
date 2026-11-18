@@ -41,7 +41,7 @@ export function buildEdgePlan(config: Config, client: ClientConfig): EdgePlan {
       const account = config.accounts.get(target.accountId);
       return (
         account?.enabled &&
-        account.kind === "http" &&
+        account.kind !== "edge_only" &&
         (!client.allowAccounts || client.allowAccounts.has(account.id))
       );
     });

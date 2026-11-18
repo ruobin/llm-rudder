@@ -49,7 +49,7 @@ function whyBlocked(
   rt: Runtime,
 ): Omit<SkippedTarget, "target"> | null {
   const account = rt.config.accounts.get(target.accountId);
-  if (!account?.enabled || account.kind !== "http") return { reason: "disabled" };
+  if (!account?.enabled || account.kind === "edge_only") return { reason: "disabled" };
   const unsuitable = whyUnsuitable(target, account, ctx, rt);
   if (unsuitable) return { reason: unsuitable };
   if (ctx.client.allowAccounts && !ctx.client.allowAccounts.has(target.accountId)) {
@@ -115,7 +115,11 @@ export function buildPlan(ctx: RequestContext, rt: Runtime): Plan {
   // caching and reasoning intact, so it goes first within its tier.
   const sameFormatFirst = (targets: Target[]): Target[] => {
     if (!config.routing.preferSameFormat) return targets;
-    const isSame = (target: Target) => config.accounts.get(target.accountId)?.api === ctx.dialect;
+    // The ChatGPT plan rewrites every request anyway, so it keeps its place in the list.
+    const isSame = (target: Target) => {
+      const account = config.accounts.get(target.accountId);
+      return account?.api === ctx.dialect || account?.kind === "chatgpt_plan";
+    };
     return [...targets.filter(isSame), ...targets.filter((target) => !isSame(target))];
   };
 

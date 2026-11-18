@@ -27,6 +27,9 @@ import {
 } from "./ir.js";
 import { CUSTOM_TOOL_PARAMETERS, unwrapCustomInput } from "./names.js";
 
+/** Of the tools OpenAI hosts, the ChatGPT plan route accepts only web search. */
+export const isPlanHostedTool = (type: string): boolean => type.startsWith("web_search");
+
 function decodeContent(content: unknown): ContentBlock[] {
   if (typeof content === "string") return content === "" ? [] : [{ type: "text", text: content }];
   const blocks: ContentBlock[] = [];
@@ -245,12 +248,50 @@ function encodeToolOutput(content: ContentBlock[], isError?: boolean): unknown {
   return encodeInputContent(content);
 }
 
+/** The tool fields for the plan route, which takes client tools only in a namespace. */
+function planToolFields(
+  ir: IRRequest,
+  tools: { name: string }[],
+  namespace: string,
+  forcedTool: string | null,
+): JsonObject {
+  // A namespaced tool cannot be named in tool_choice, so a forced tool is the only one offered.
+  const forced = tools.filter((tool) => tool.name === forcedTool);
+  const offered = forced.length > 0 ? forced : tools;
+  const hosted = ir.hostedTools
+    .filter((tool) => tool.family === "openai" && isPlanHostedTool(tool.type))
+    .map((tool) => tool.raw);
+  const list = [
+    ...(offered.length > 0
+      ? [
+          {
+            type: "namespace",
+            name: namespace,
+            description: "The tools available in this conversation.",
+            tools: offered,
+          },
+        ]
+      : []),
+    ...hosted,
+  ];
+  if (list.length === 0) return {};
+  const choice = forced.length > 0 ? "required" : ir.toolChoice;
+  return {
+    tools: list,
+    ...(typeof choice === "string" ? { tool_choice: choice } : {}),
+    ...(offered.length > 0 && ir.parallelToolCalls !== undefined
+      ? { parallel_tool_calls: ir.parallelToolCalls }
+      : {}),
+  };
+}
+
 export function encodeResponsesRequest(
   ir: IRRequest,
   target: EncodeTarget,
   stream: boolean,
 ): JsonObject {
-  const { names, profile } = target;
+  const { names, profile, planRoute } = target;
+  const namespaced = planRoute ? { namespace: planRoute.toolNamespace } : {};
   const input: JsonObject[] = [];
   // Sent as the first input item, so it stays in the cached prefix.
   if (ir.system.length > 0) input.push(textMessage("developer", ir.system.join("\n\n")));
@@ -295,12 +336,14 @@ export function encodeResponsesRequest(
                   call_id: block.id,
                   name: names.wire(block.name, block.namespace),
                   input: block.input,
+                  ...namespaced,
                 }
               : {
                   type: "function_call",
                   call_id: block.id,
                   name: names.wire(block.name, block.namespace),
                   arguments: block.input || "{}",
+                  ...namespaced,
                 },
           );
           break;
@@ -325,34 +368,40 @@ export function encodeResponsesRequest(
     include: ["reasoning.encrypted_content"],
     prompt_cache_key: target.sessionKey,
   };
-  if (ir.tools.length > 0) {
-    body.tools = ir.tools.map((tool) =>
-      tool.kind === "custom"
-        ? {
-            type: "custom",
-            name: names.wire(tool.name, tool.namespace),
-            ...(tool.description ? { description: tool.description } : {}),
-          }
-        : {
-            type: "function",
-            name: names.wire(tool.name, tool.namespace),
-            ...(tool.description ? { description: tool.description } : {}),
-            parameters: tool.parameters,
-            strict: false,
-          },
-    );
+  const tools = ir.tools.map((tool) =>
+    tool.kind === "custom"
+      ? {
+          type: "custom",
+          name: names.wire(tool.name, tool.namespace),
+          ...(tool.description ? { description: tool.description } : {}),
+        }
+      : {
+          type: "function",
+          name: names.wire(tool.name, tool.namespace),
+          ...(tool.description ? { description: tool.description } : {}),
+          parameters: tool.parameters,
+          strict: false,
+        },
+  );
+  const forcedTool =
+    typeof ir.toolChoice === "object"
+      ? names.wire(ir.toolChoice.name, ir.toolChoice.namespace)
+      : null;
+  if (planRoute) {
+    Object.assign(body, planToolFields(ir, tools, planRoute.toolNamespace, forcedTool));
+  } else if (tools.length > 0) {
+    body.tools = tools;
     if (ir.parallelToolCalls !== undefined) body.parallel_tool_calls = ir.parallelToolCalls;
-    if (ir.toolChoice) {
-      body.tool_choice =
-        typeof ir.toolChoice === "string"
-          ? ir.toolChoice
-          : { type: "function", name: names.wire(ir.toolChoice.name, ir.toolChoice.namespace) };
-    }
+    if (forcedTool) body.tool_choice = { type: "function", name: forcedTool };
+    else if (ir.toolChoice) body.tool_choice = ir.toolChoice;
   }
-  if (target.maxOutputTokens !== undefined) body.max_output_tokens = target.maxOutputTokens;
-  if (profile.sampling) {
-    if (ir.temperature !== undefined) body.temperature = ir.temperature;
-    if (ir.topP !== undefined) body.top_p = ir.topP;
+  // The plan route rejects these fields.
+  if (!planRoute) {
+    if (target.maxOutputTokens !== undefined) body.max_output_tokens = target.maxOutputTokens;
+    if (profile.sampling) {
+      if (ir.temperature !== undefined) body.temperature = ir.temperature;
+      if (ir.topP !== undefined) body.top_p = ir.topP;
+    }
   }
   const reasoning: JsonObject = {};
   if (target.effort) reasoning.effort = target.effort;
@@ -401,7 +450,8 @@ function failureOf(response: JsonObject): Classified {
 
 function wireCall(item: JsonObject, ctx: ResponseContext): ToolCallBlock {
   const { name, namespace } = ctx.names.original(asString(item.name) ?? "");
-  const declaredNamespace = asString(item.namespace) ?? namespace;
+  const sent = asString(item.namespace);
+  const declaredNamespace = sent && sent !== ctx.toolNamespace ? sent : namespace;
   const custom = item.type === "custom_tool_call";
   const clientCustom = ctx.customTools.has(name);
   const text = custom ? (asString(item.input) ?? "") : (asString(item.arguments) ?? "{}");

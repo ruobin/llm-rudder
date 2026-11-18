@@ -7,6 +7,7 @@ import { createLogger, createRuntime, restoreState } from "./runtime.js";
 
 const DEFAULT_DRAIN_S = 280;
 const PIN_CLEANUP_MS = 10 * 60_000;
+const CHATGPT_UPKEEP_MS = 15 * 60_000;
 
 async function main(): Promise<void> {
   const log = createLogger();
@@ -42,6 +43,12 @@ async function main(): Promise<void> {
 
   const pinCleanup = setInterval(() => runtime.pins.prune(), PIN_CLEANUP_MS);
   pinCleanup.unref();
+
+  const maintainChatGpt = () => {
+    for (const session of runtime.chatgpt.values()) void session.maintain();
+  };
+  maintainChatGpt();
+  setInterval(maintainChatGpt, CHATGPT_UPKEEP_MS).unref();
 
   let stopping = false;
   const shutdown = async (signal: string) => {

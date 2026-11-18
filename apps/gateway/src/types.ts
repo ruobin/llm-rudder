@@ -26,7 +26,8 @@ export type Outcome =
 export interface Classified {
   outcome: Outcome;
   retryElsewhere: boolean;
-  scope?: "account" | "model";
+  /** What the failure says something about. "request" means only this request. */
+  scope?: "account" | "model" | "request";
   retryAfterS?: number;
   /** Epoch milliseconds, when the upstream states a reset time. */
   resetsAt?: number;

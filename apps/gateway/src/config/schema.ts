@@ -48,7 +48,7 @@ const compatOverrides = z
 const accountSchema = z
   .strictObject({
     /** edge_only accounts are used by llmr-edge and never called from the VPS. */
-    kind: z.enum(["http", "edge_only"]).default("http"),
+    kind: z.enum(["http", "edge_only", "chatgpt_plan"]).default("http"),
     api: z.enum(["openai.chat", "openai.responses", "anthropic.messages"]).default("openai.chat"),
     auth_header: z.enum(["bearer", "x-api-key"]).optional(),
     base_url: z.url().optional(),
@@ -62,7 +62,7 @@ const accountSchema = z
     budget: budgetSchema.optional(),
   })
   .refine(
-    (a) => a.kind === "edge_only" || (a.base_url === undefined) !== (a.base_url_env === undefined),
+    (a) => a.kind !== "http" || (a.base_url === undefined) !== (a.base_url_env === undefined),
     { message: "set exactly one of base_url or base_url_env" },
   )
   .refine(
@@ -72,7 +72,7 @@ const accountSchema = z
         a.base_url_env === undefined &&
         a.api_key_env === undefined &&
         a.budget === undefined),
-    { message: "an edge_only account has no URL, key or budget on the gateway" },
+    { message: "edge_only and chatgpt_plan accounts have no URL, key or budget here" },
   );
 
 const targetSchema = z.strictObject({

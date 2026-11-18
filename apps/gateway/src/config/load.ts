@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { globToRegExp } from "@llm-router/shared";
+import { chatGptEndpoints, globToRegExp } from "@llm-router/shared";
 import { parse as parseYaml } from "yaml";
 import type { z } from "zod";
 import { hashKey } from "../auth/keys.js";
@@ -22,7 +22,7 @@ export interface ClientConfig {
 
 export interface AccountConfig {
   id: string;
-  kind: "http" | "edge_only";
+  kind: "http" | "edge_only" | "chatgpt_plan";
   api: Dialect;
   authHeader: "bearer" | "x-api-key";
   baseUrl: string;
@@ -221,7 +221,9 @@ export function buildConfig(
     const configuredUrl =
       account.kind === "edge_only"
         ? ""
-        : (account.base_url ?? requireEnv(account.base_url_env as string, where));
+        : account.kind === "chatgpt_plan"
+          ? chatGptEndpoints(env).api
+          : (account.base_url ?? requireEnv(account.base_url_env as string, where));
     const trimmedUrl = configuredUrl.replace(/\/+$/, "");
     // The Anthropic client adds /v1/messages itself.
     const baseUrl =
@@ -237,7 +239,7 @@ export function buildConfig(
     accounts.set(accountId, {
       id: accountId,
       kind: account.kind,
-      api: account.api,
+      api: account.kind === "chatgpt_plan" ? "openai.responses" : account.api,
       authHeader:
         account.auth_header ?? (account.api === "anthropic.messages" ? "x-api-key" : "bearer"),
       baseUrl,

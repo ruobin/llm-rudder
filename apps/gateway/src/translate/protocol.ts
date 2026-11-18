@@ -9,10 +9,14 @@ import type {
 import type { RequestContext } from "../execution/context.js";
 import type { Classified, Dialect, JsonObject, Usage } from "../types.js";
 import { classifyAnthropicHttpError } from "../upstream/anthropic.js";
-import { classifyHttpError, type HeaderBag } from "../upstream/classify.js";
+import {
+  classifyChatGptHttpError,
+  classifyHttpError,
+  type HeaderBag,
+} from "../upstream/classify.js";
 import type { UpstreamResponse } from "../upstream/client.js";
 import { buildUpstreamBody } from "../upstream/request.js";
-import type { SseEvent } from "../upstream/sse.js";
+import { SseDecoder, type SseEvent } from "../upstream/sse.js";
 import { StreamToolExtras } from "../upstream/tool-extras.js";
 import {
   ChatStreamDecoder,
@@ -34,6 +38,7 @@ import {
   type IRResponse,
   type IRStreamEvent,
   type ReasoningFamily,
+  type ToolCallBlock,
 } from "./ir.js";
 import {
   decodeMessagesRequest,
@@ -57,8 +62,16 @@ interface StreamDecoder {
   push(event: SseEvent): IRStreamEvent[];
 }
 
+type UpstreamFormat = Dialect | "chatgpt.plan";
+
+/** The plan route accepts tools only inside a namespace. */
+const PLAN_TOOL_NAMESPACE = "tools";
+
 interface Codec {
   family: ReasoningFamily;
+  streamOnly?: boolean;
+  /** Adjusts what the encoder may send to this upstream. */
+  targetRules?: Partial<EncodeTarget>;
   decodeRequest(body: JsonObject): IRRequest;
   encodeRequest(ir: IRRequest, target: EncodeTarget, stream: boolean): JsonObject;
   decodeResponse(parsed: JsonObject, ctx: ResponseContext): IRResponse | Classified;
@@ -73,7 +86,59 @@ interface Codec {
   ): Promise<UpstreamResponse>;
 }
 
-const CODECS: Record<Dialect, Codec> = {
+const responsesCodec: Codec = {
+  family: "openai",
+  decodeRequest: decodeResponsesRequest,
+  encodeRequest: encodeResponsesRequest,
+  decodeResponse: decodeResponsesResponse,
+  encodeResponse: encodeResponsesResponse,
+  newDecoder: (ctx) => new ResponsesStreamDecoder(ctx),
+  newEncoder: (ctx) => new ResponsesStreamEncoder(ctx),
+  classifyHttpError,
+  dispatch({ rt, account }, body, { stream, signal }) {
+    return rt.upstream.sendResponses(account, {
+      body: Buffer.from(JSON.stringify(body)),
+      stream,
+      signal,
+    });
+  },
+};
+
+const chatGptPlanCodec: Codec = {
+  ...responsesCodec,
+  streamOnly: true,
+  targetRules: { planRoute: { toolNamespace: PLAN_TOOL_NAMESPACE } },
+  encodeRequest: (ir, target) => encodeResponsesRequest(ir, target, true),
+  classifyHttpError: classifyChatGptHttpError,
+  async dispatch({ rt, account }, body, { signal }) {
+    const session = rt.chatgpt.get(account.id);
+    if (!session) throw new Error(`No ChatGPT session for ${account.id}.`);
+    const payload = Buffer.from(JSON.stringify(body));
+    const send = (bearerToken: string) =>
+      rt.upstream.sendResponses(account, { bearerToken, body: payload, stream: true, signal });
+
+    const token = await session.accessToken();
+    let response = await send(token);
+    if (response.status === 401) {
+      // The token may have been replaced or revoked, so renew it and try once more.
+      await response.body.text().catch(() => "");
+      response = await send(await session.replacementFor(token));
+    }
+    if (response.status >= 400) {
+      rt.log.warn(
+        {
+          account: account.id,
+          status: response.status,
+          upstreamRequestId: response.headers["x-request-id"],
+        },
+        "the ChatGPT plan rejected a request",
+      );
+    }
+    return response;
+  },
+};
+
+const CODECS: Record<UpstreamFormat, Codec> = {
   "openai.chat": {
     family: "other",
     decodeRequest: decodeChatRequest,
@@ -121,23 +186,8 @@ const CODECS: Record<Dialect, Codec> = {
       });
     },
   },
-  "openai.responses": {
-    family: "openai",
-    decodeRequest: decodeResponsesRequest,
-    encodeRequest: encodeResponsesRequest,
-    decodeResponse: decodeResponsesResponse,
-    encodeResponse: encodeResponsesResponse,
-    newDecoder: (ctx) => new ResponsesStreamDecoder(ctx),
-    newEncoder: (ctx) => new ResponsesStreamEncoder(ctx),
-    classifyHttpError,
-    dispatch({ rt, account }, body, { stream, signal }) {
-      return rt.upstream.sendResponses(account, {
-        body: Buffer.from(JSON.stringify(body)),
-        stream,
-        signal,
-      });
-    },
-  },
+  "openai.responses": responsesCodec,
+  "chatgpt.plan": chatGptPlanCodec,
 };
 
 const decoded = new WeakMap<RequestContext, IRRequest>();
@@ -154,7 +204,11 @@ export function requestIR(ctx: RequestContext): IRRequest {
 
 export const familyOf = (dialect: Dialect): ReasoningFamily => CODECS[dialect].family;
 
-function encodeTarget({ rt, ctx, target, account }: Attempt, ir: IRRequest): EncodeTarget {
+function encodeTarget(
+  { rt, ctx, target, account }: Attempt,
+  ir: IRRequest,
+  rules: Partial<EncodeTarget> = {},
+): EncodeTarget {
   const profile = profileFor(rt.config.models, target.model);
   // A client's level is only sent to models known to accept reasoning settings.
   const requestedEffort = (profile.efforts ? ir.effort : undefined) ?? target.effort;
@@ -176,11 +230,19 @@ function encodeTarget({ rt, ctx, target, account }: Attempt, ir: IRRequest): Enc
     sessionKey: ctx.sessionKey,
     replay: (callId) =>
       rt.reasoning.get(ctx.client.id, callId, CODECS[account.api].family, account.id),
+    ...rules,
   };
 }
 
-function responseContext({ rt, ctx, target }: Attempt, ir: IRRequest): ResponseContext {
+function responseContext(
+  { rt, ctx, target }: Attempt,
+  ir: IRRequest,
+  upstream: Codec,
+): ResponseContext {
   return {
+    ...(upstream.targetRules?.planRoute
+      ? { toolNamespace: upstream.targetRules.planRoute.toolNamespace }
+      : {}),
     names: new ToolNames(ir.tools),
     customTools: new Set(ir.tools.filter((tool) => tool.kind === "custom").map((t) => t.name)),
     now: rt.now(),
@@ -361,19 +423,138 @@ function storeArtifacts(
   rt.reasoning.set(ctx.client.id, callId, { family, accountId: account.id, items });
 }
 
-function translated(clientDialect: Dialect, upstreamDialect: Dialect): UpstreamProtocol {
+/** Builds one complete response from a stream's events. */
+function collectResponse(events: IRStreamEvent[]): IRResponse | Classified {
+  const blocks: IRResponse["blocks"] = [];
+  const calls = new Map<number, ToolCallBlock>();
+  const response: IRResponse = { blocks, finish: "stop", usage: null };
+  let finished = false;
+  let reasoning = "";
+  for (const event of events) {
+    switch (event.type) {
+      case "error":
+        return event.cause;
+      case "meta":
+        if (event.id) response.id = event.id;
+        if (event.model) response.model = event.model;
+        break;
+      case "text": {
+        const last = blocks.at(-1);
+        if (last?.type === "text") last.text += event.text;
+        else blocks.push({ type: "text", text: event.text });
+        break;
+      }
+      case "reasoning":
+        reasoning += event.text;
+        break;
+      case "artifact":
+        blocks.push({
+          type: "reasoning",
+          family: event.family,
+          ...(reasoning ? { text: reasoning } : {}),
+          raw: event.item,
+        });
+        reasoning = "";
+        break;
+      case "tool_start": {
+        const call: ToolCallBlock = {
+          type: "tool_call",
+          id: event.id,
+          name: event.name,
+          ...(event.namespace ? { namespace: event.namespace } : {}),
+          input: "",
+          kind: event.kind,
+        };
+        calls.set(event.index, call);
+        blocks.push(call);
+        break;
+      }
+      case "tool_delta": {
+        const call = calls.get(event.index);
+        if (call) call.input += event.text;
+        break;
+      }
+      case "usage":
+        response.usage = event.usage;
+        break;
+      case "finish":
+        response.finish = event.reason;
+        finished = true;
+        break;
+      default:
+        break;
+    }
+  }
+  if (!finished) {
+    return {
+      outcome: "upstream_error",
+      retryElsewhere: true,
+      scope: "model",
+      code: "stream_ended_early",
+      message: "The upstream stream ended before the response was complete.",
+    };
+  }
+  return response;
+}
+
+function translated(clientDialect: Dialect, upstreamFormat: UpstreamFormat): UpstreamProtocol {
   const client = CODECS[clientDialect];
-  const upstream = CODECS[upstreamDialect];
+  const upstream = CODECS[upstreamFormat];
+
+  const completeReply = (
+    attempt: Attempt,
+    context: ResponseContext,
+    decodedResponse: IRResponse,
+    parsed: JsonObject | null,
+  ): CompleteReply => {
+    const response = normalizeResponse(decodedResponse);
+    if (parsed && attempt.account.compat.toolExtras) {
+      const message = (parsed.choices as JsonObject[] | undefined)?.[0]?.message;
+      attempt.rt.toolExtras.captureMessage(attempt.ctx.client.id, message);
+    }
+    const firstCall = response.blocks.find((block) => block.type === "tool_call");
+    const artifacts = response.blocks.flatMap((block) =>
+      block.type === "reasoning" && block.raw ? [block.raw] : [],
+    );
+    storeArtifacts(
+      attempt,
+      firstCall?.type === "tool_call" ? firstCall.id : null,
+      upstream.family,
+      artifacts,
+    );
+    return {
+      usage: response.usage,
+      returnedModel: response.model ?? null,
+      outputChars: JSON.stringify(response.blocks).length,
+      render: (notice) => JSON.stringify(client.encodeResponse(response, context, notice)),
+    };
+  };
+
   return {
+    ...(upstream.streamOnly ? { streamOnly: true } : {}),
+    async readStream(attempt, body) {
+      const ir = requestIR(attempt.ctx);
+      const context = responseContext(attempt, ir, upstream);
+      const decoder = upstream.newDecoder(context, attempt);
+      const sse = new SseDecoder();
+      const events: IRStreamEvent[] = [];
+      for await (const bytes of body) {
+        for (const event of sse.push(bytes)) events.push(...decoder.push(event));
+      }
+      for (const event of sse.flush()) events.push(...decoder.push(event));
+      const response = collectResponse(events);
+      return "outcome" in response ? response : completeReply(attempt, context, response, null);
+    },
     send(attempt, options) {
       const ir = requestIR(attempt.ctx);
-      const body = upstream.encodeRequest(ir, encodeTarget(attempt, ir), options.stream);
+      const target = encodeTarget(attempt, ir, upstream.targetRules);
+      const body = upstream.encodeRequest(ir, target, options.stream);
       return upstream.dispatch(attempt, body, options);
     },
     classifyHttpError: upstream.classifyHttpError,
     readComplete(attempt, text): CompleteReply | Classified {
       const ir = requestIR(attempt.ctx);
-      const context = responseContext(attempt, ir);
+      const context = responseContext(attempt, ir, upstream);
       const parsed = parseJsonObject(text);
       if (!parsed) {
         return {
@@ -386,31 +567,11 @@ function translated(clientDialect: Dialect, upstreamDialect: Dialect): UpstreamP
       }
       const decodedResponse = upstream.decodeResponse(parsed, context);
       if ("outcome" in decodedResponse) return decodedResponse;
-      const response = normalizeResponse(decodedResponse);
-      if (attempt.account.compat.toolExtras) {
-        const message = (parsed.choices as JsonObject[] | undefined)?.[0]?.message;
-        attempt.rt.toolExtras.captureMessage(attempt.ctx.client.id, message);
-      }
-      const firstCall = response.blocks.find((block) => block.type === "tool_call");
-      const artifacts = response.blocks.flatMap((block) =>
-        block.type === "reasoning" && block.raw ? [block.raw] : [],
-      );
-      storeArtifacts(
-        attempt,
-        firstCall?.type === "tool_call" ? firstCall.id : null,
-        upstream.family,
-        artifacts,
-      );
-      return {
-        usage: response.usage,
-        returnedModel: response.model ?? null,
-        outputChars: JSON.stringify(response.blocks).length,
-        render: (notice) => JSON.stringify(client.encodeResponse(response, context, notice)),
-      };
+      return completeReply(attempt, context, decodedResponse, parsed);
     },
     newStreamReader(attempt) {
       const ir = requestIR(attempt.ctx);
-      const context = responseContext(attempt, ir);
+      const context = responseContext(attempt, ir, upstream);
       return new TranslatingReader(
         attempt,
         context,
@@ -430,7 +591,7 @@ function translated(clientDialect: Dialect, upstreamDialect: Dialect): UpstreamP
 
 const cache = new Map<string, UpstreamProtocol>();
 
-export function translatedProtocol(client: Dialect, upstream: Dialect): UpstreamProtocol {
+export function translatedProtocol(client: Dialect, upstream: UpstreamFormat): UpstreamProtocol {
   const key = `${client}>${upstream}`;
   let protocol = cache.get(key);
   if (!protocol) {

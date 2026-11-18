@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { chatGptEndpoints, CHATGPT_USAGE_URL, type ChatGptEndpoints } from "@llm-router/shared";
 import { pino, type Logger } from "pino";
 import { ClientLimits, FailedAuthThrottle } from "./auth/limits.js";
 import { BudgetManager, dayPeriod, monthPeriod } from "./billing/budgets.js";
+import { ChatGptSession, credentialPath, SIGN_IN_COMMAND } from "./chatgpt/session.js";
 import type { Config } from "./config/load.js";
 import { MemoryPersistence, type Persistence } from "./ledger/records.js";
 import { FallbackEpisodes } from "./notify/episodes.js";
@@ -25,6 +27,8 @@ export interface Runtime {
   toolExtras: ToolExtrasStore;
   reasoning: ReasoningStore;
   pins: PinStore;
+  /** One signed-in session for each ChatGPT plan account. */
+  chatgpt: Map<string, ChatGptSession>;
   upstream: UpstreamClient;
   persistence: Persistence;
   limits: ClientLimits;
@@ -47,6 +51,9 @@ export interface RuntimeOptions {
   persistence?: Persistence;
   upstream?: UpstreamClient;
   sinks?: EventSink[];
+  /** Where sign-ins are kept. */
+  stateDir?: string;
+  chatGptEndpoints?: ChatGptEndpoints;
 }
 
 const REDACTED_PATHS = [
@@ -59,6 +66,16 @@ const REDACTED_PATHS = [
 
 export function createLogger(level: string = process.env.LOG_LEVEL ?? "info"): Logger {
   return pino({ level, redact: { paths: REDACTED_PATHS, censor: "[redacted]" } });
+}
+
+function chatGptRejection(accountId: string, detail = "auth"): string {
+  if (detail === "subscription_sharing_user_not_eligible") {
+    return `OpenAI says ${accountId} cannot use its ChatGPT plan here (${detail}). Signing in again will not change that.`;
+  }
+  if (detail === "chatgpt_admission_denied") {
+    return `OpenAI refused requests from ${accountId}, possibly because of account policy or the VPS region (${detail}).`;
+  }
+  return `${accountId} needs a new ChatGPT sign-in (${detail}). Run: ${SIGN_IN_COMMAND}`;
 }
 
 export function createRuntime(config: Config, options: RuntimeOptions = {}): Runtime {
@@ -79,6 +96,9 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
     (error) => log.warn({ err: error }, "notification delivery failed"),
   );
 
+  const isChatGptPlan = (accountId: string) =>
+    config.accounts.get(accountId)?.kind === "chatgpt_plan";
+
   const quota = new QuotaManager(now, persistence, (change) => {
     if (change.kind === "exhausted") {
       const until = change.retryAt ? ` until ${new Date(change.retryAt).toISOString()}` : "";
@@ -86,7 +106,10 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
       notifier.emit(
         "account_exhausted",
         change.accountId,
-        `${change.accountId} is out of quota${until}.`,
+        isChatGptPlan(change.accountId)
+          ? `${change.accountId} reached a ChatGPT usage limit, so it is paused and rechecked ` +
+              `from time to time. Manage usage: ${CHATGPT_USAGE_URL}`
+          : `${change.accountId} is out of quota${until}.`,
       );
     } else if (change.kind === "recovered") {
       notifier.clear("account_exhausted", change.accountId);
@@ -95,10 +118,37 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
       notifier.emit(
         "account_disabled",
         change.accountId,
-        `${change.accountId} was rejected by its provider (${change.detail ?? "auth"}). Check its key, then reset it.`,
+        isChatGptPlan(change.accountId)
+          ? chatGptRejection(change.accountId, change.detail)
+          : `${change.accountId} was rejected by its provider (${change.detail ?? "auth"}). Check its key, then reset it.`,
       );
     }
   });
+
+  const stateDir = options.stateDir ?? process.env.LLMR_STATE_DIR ?? "data";
+  const endpoints = options.chatGptEndpoints ?? chatGptEndpoints();
+  const chatgpt = new Map<string, ChatGptSession>();
+  for (const account of config.accounts.values()) {
+    if (account.kind !== "chatgpt_plan") continue;
+    chatgpt.set(
+      account.id,
+      new ChatGptSession({
+        file: credentialPath(stateDir, account.id),
+        endpoints,
+        now,
+        onSignInRequired: (code) => quota.disable(account.id, code),
+        onSignedIn: () => {
+          const wasBlocked = quota.reset(account.id) > 0;
+          notifier.clear("account_disabled", account.id);
+          notifier.clear("account_exhausted", account.id);
+          if (wasBlocked) {
+            notifier.emit("account_recovered", account.id, `${account.id} is signed in again.`);
+          }
+        },
+        onWarning: (message) => log.warn({ account: account.id }, message),
+      }),
+    );
+  }
 
   return {
     config,
@@ -113,6 +163,7 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
     toolExtras: new ToolExtrasStore(now),
     reasoning: new ReasoningStore(now),
     pins: new PinStore(now, persistence),
+    chatgpt,
     upstream: options.upstream ?? new HttpUpstreamClient(config, instanceId),
     persistence,
     limits: new ClientLimits(now),
@@ -132,6 +183,10 @@ export async function restoreState(runtime: Runtime): Promise<void> {
     runtime.persistence.loadPins(now - PIN_IDLE_MS),
   ]);
   runtime.quota.load(quota);
+  // Tokens on disk mean a sign-in arrived or survived, so it deserves another try.
+  for (const [accountId, session] of runtime.chatgpt) {
+    if (session.usable) runtime.quota.clearDisabled(accountId);
+  }
   runtime.budgets.load(spend);
   runtime.pins.load(pins);
 }
