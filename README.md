@@ -2,7 +2,7 @@
 
 A personal LLM gateway. Clients ask for `frontier`, `medium` or `flash`. The gateway picks a real model from your API keys and OpenAI-compatible gateways, moves to the next one when a target fails or runs out of quota, and drops to another tier with a warning instead of failing the task.
 
-**Status: Phases 1 to 4 are built.** The gateway serves the OpenAI Chat Completions and Responses APIs and Anthropic's Messages API, and translates between them, so any client can use any model. The real OpenCode, Pi, Claude Code and Codex command-line clients have been tested through it with fake providers, and chat UIs use the same Chat Completions API. A small local helper keeps Claude Code on your Claude plan and moves it to the gateway when the plan runs out, and your ChatGPT plan can serve every client. None of this has run against real provider accounts yet. See [the design](docs/DESIGN.md) and [the to-do list](docs/TODO.md).
+**Status: Phases 1 to 4 are built.** The gateway serves the OpenAI Chat Completions and Responses APIs and Anthropic's Messages API, and translates between them, so any client can use any model. The real OpenCode, Pi, Claude Code and Codex command-line clients have been tested through it with fake providers, and chat UIs use the same Chat Completions API. A small local helper keeps Claude Code on your Claude plan and moves it to the gateway when the plan runs out, and your ChatGPT plan can serve every client. A ChatGPT plan has served real text and tool requests through the gateway from a laptop. The other providers, the VPS deployment and the transfer of a real sign-in to it are still untested. See [the design](docs/DESIGN.md) and [the to-do list](docs/TODO.md).
 
 ## Try it locally
 
@@ -105,7 +105,7 @@ Then run `codex --profile llmr`.
 
 ## Use your ChatGPT plan
 
-An eligible ChatGPT Plus or Pro plan can serve every client, through OpenAI's [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source) for open-source apps. This has only been tested against fake OpenAI servers so far.
+An eligible ChatGPT Plus or Pro plan can serve every client, through OpenAI's [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source) for open-source apps. Sign-in, the plan's model list, streaming, and a tool call with its follow-up have been tested against a real plan. Moving a real sign-in to a VPS and renewing it there have only been tested with fake servers.
 
 Before you turn it on:
 

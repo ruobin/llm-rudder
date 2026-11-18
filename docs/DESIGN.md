@@ -1149,6 +1149,8 @@ sequenceDiagram
 
 **Requests.** Every request is rewritten, including those from Responses clients, because the plan has its own rules. It always sets `store: false` and `stream: true`, sends instructions as developer messages, and leaves out `max_output_tokens`, `temperature` and `top_p`. Client tools go in one namespace called `tools`, which is removed from the calls clients receive. A forced tool becomes the only tool offered, with `tool_choice: required`, because `tool_choice` cannot name a namespaced tool. A client that did not ask to stream gets one response assembled from the stream, and only `response.completed` or `response.incomplete` counts as an ending.
 
+**Seen on the real service (2026-11-18).** The stream arrives without a `content-type` header, so the plan's responses are always read as a stream. Function calls come back with `namespace: "tools"`, and a follow-up that sends them back is accepted. The request ID is in `x-oai-request-id`, and streams can include a `response.metadata` event, which the gateway ignores.
+
 **Routing.** The plan keeps its configured place in a tier even though most clients speak another format. It is skipped when nobody is signed in, when its model list lacks the model, and for requests that need stored state, files uploaded by ID, or hosted tools other than web search.
 
 | Error                                                                                                    | Treated as                | Effect                                                        |

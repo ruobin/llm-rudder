@@ -46,7 +46,7 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 **ChatGPT plan** (can wait until Phase 4)
 
 - [x] **(you)** Decide whether the repository can become public and open source.
-- [ ] Test sign-in on a laptop, credential transfer to the VPS, and a token refresh from the VPS.
+- [~] Test sign-in on a laptop, credential transfer to the VPS, and a token refresh from the VPS. The laptop sign-in works. The rest needs the VPS.
 
 **Clients**
 
@@ -201,11 +201,12 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 - [x] Limit errors that arrive mid-stream as `response.failed`
 - [x] Model list from the plan
 - [x] Per-app cap guidance in the setup docs
-- [ ] **(you)** Sign in with your real account, push to the VPS, and set this app's usage limit
+- [x] Real sign-in on the laptop, and real text and tool requests through the gateway
+- [ ] **(you)** Push the sign-in to the VPS and set this app's usage limit
 
 **Exit criteria**
 
-- [~] OpenCode, the chat UI and Codex are served from the plan. The real OpenCode, Pi and Codex clients pass against a fake OpenAI. A real plan and the chat UI are untested.
+- [~] OpenCode, the chat UI and Codex are served from the plan. A real plan served Chat Completions requests through the gateway, and the real OpenCode, Pi and Codex clients pass against a fake OpenAI. Those clients on the real plan, and the chat UI, are untested.
 - [~] When the plan reaches a limit, traffic moves to the next target and comes back later. Tested against a fake OpenAI.
 - [~] Token refresh works unattended for at least a week. An eight-day run with a simulated clock and rotating tokens passes. It still needs a real week on the VPS.
 
