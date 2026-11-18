@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+config/config.yaml
+
+# Logs
+*.log
