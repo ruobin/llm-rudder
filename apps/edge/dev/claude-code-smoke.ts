@@ -8,11 +8,22 @@
  * Run it after each Claude Code update: pnpm smoke:claude-code
  */
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { anthropicTextStream } from "../../gateway/src/dev/fake-upstream.js";
-import { ANTHROPIC_UPSTREAM_KEY, CLAUDE_KEY } from "../../gateway/test/helpers.js";
+import {
+  anthropicTextStream,
+  chatToolStream,
+  responsesTextStream,
+  responsesToolStream,
+  textStream,
+} from "../../gateway/src/dev/fake-upstream.js";
+import {
+  ANTHROPIC_UPSTREAM_KEY,
+  CLAUDE_CONFIG,
+  CLAUDE_KEY,
+  MODELS,
+} from "../../gateway/test/helpers.js";
 import { EDGE_KEY_HEADER } from "../src/server.js";
 import {
   EDGE_KEY,
@@ -26,7 +37,8 @@ import {
 
 const CLAUDE = process.env.CLAUDE_BIN ?? "claude";
 const TIMEOUT_MS = 90_000;
-const MODELS = [OPUS, SONNET, HAIKU];
+const CLAUDE_MODELS = [OPUS, SONNET, HAIKU];
+const MODELS_TO_CLEAR = [OPUS, SONNET, HAIKU];
 
 const version = spawnSync(CLAUDE, ["--version"], { encoding: "utf8" });
 if (version.status !== 0) {
@@ -40,7 +52,34 @@ const home = join(dir, "home");
 const workspace = join(dir, "workspace");
 for (const path of [home, workspace]) mkdirSync(path, { recursive: true });
 
-const h = await startHarness();
+// Sonnet requests go to a GPT account and Haiku requests to a Gemini account, while
+// Opus stays on Anthropic. This is how the smoke test reaches each translation.
+const GPT = "gpt-6.2-astra";
+const GEMINI = "gemini-4-hydrogen";
+const NOTE = "smoke-note-contents-4815";
+const yaml = CLAUDE_CONFIG.replace(
+  "edge: true, allow_accounts: [anthropic-key, backup] }",
+  "edge: true }",
+)
+  .replace(
+    "  openai-key: { base_url_env: UPSTREAM_URL, api_key_env: OPENAI_KEY, compat: openai,",
+    "  openai-key: { api: openai.responses, base_url_env: UPSTREAM_URL, api_key_env: OPENAI_KEY, compat: openai,",
+  )
+  .replace(
+    "  claude-plan:",
+    "  gemini-key: { base_url_env: UPSTREAM_URL, api_key_env: GEMINI_KEY, compat: gemini, cost_class: metered }\n  claude-plan:",
+  )
+  .replace(
+    "      - { account: anthropic-key, model: claude-sonnet-5-5 }",
+    `      - { account: openai-key, model: ${GPT} }`,
+  )
+  .replace(
+    "      - { account: openai-key, model: gpt-flash }\n      - { account: anthropic-key, model: claude-haiku-5-5 }",
+    `      - { account: gemini-key, model: ${GEMINI} }`,
+  );
+
+const h = await startHarness(yaml, MODELS);
+writeFileSync(join(workspace, "note.txt"), `${NOTE}\n`);
 let failures = 0;
 
 function check(ok: boolean, label: string): void {
@@ -67,7 +106,12 @@ const directToGateway = () => ({
   ANTHROPIC_AUTH_TOKEN: CLAUDE_KEY,
 });
 
-function runClaude(prompt: string, route: Record<string, string>): Promise<ClaudeResult> {
+function runClaude(
+  prompt: string,
+  route: Record<string, string>,
+  model: string = OPUS,
+  extraArgs: string[] = ["--tools", ""],
+): Promise<ClaudeResult> {
   const env = {
     PATH: process.env.PATH,
     HOME: home,
@@ -87,11 +131,10 @@ function runClaude(prompt: string, route: Record<string, string>): Promise<Claud
     "-p",
     prompt,
     "--model",
-    OPUS,
+    model,
     "--output-format",
     "json",
-    "--tools",
-    "",
+    ...extraArgs,
     "--no-session-persistence",
     "--strict-mcp-config",
   ];
@@ -140,7 +183,7 @@ try {
   check(h.toGateway.messageCalls.length === 0, "no model traffic went to the VPS");
 
   console.log("\nAfter a simulated plan limit");
-  for (const model of MODELS) {
+  for (const model of CLAUDE_MODELS) {
     h.anthropic.setAlways(model, planLimitStep(h.clock.now));
     h.gateway.upstream.setAlways(model, anthropicTextStream(model, "Served by the API key"));
   }
@@ -171,8 +214,62 @@ try {
   check(direct.result.includes("Served by the API key"), "the gateway answered");
   check(h.gateway.upstream.requests.length > providerCalls, "the provider was called");
 
+  // The model asks to read a file, Claude Code runs the tool, and the result must
+  // arrive back at the model in that provider's own format.
+  const readFile = { file_path: join(workspace, "note.txt") };
+  const withTools = ["--tools", "Read", "--allowedTools", "Read"];
+
+  console.log("\nA tool loop on GPT, through the Responses API");
+  for (const model of MODELS_TO_CLEAR) h.gateway.upstream.clear(model);
+  h.gateway.upstream.script(
+    GPT,
+    responsesToolStream(GPT, "call_read_1", "Read", readFile),
+    responsesTextStream(GPT, "GPT finished the task"),
+  );
+  const onGpt = await runClaude("Read note.txt.", directToGateway(), SONNET, withTools);
+  check(onGpt.code === 0, "Claude Code exits successfully");
+  check(onGpt.result.includes("GPT finished the task"), "the final answer came from GPT");
+  const gptCalls = h.gateway.upstream.requestsFor(GPT);
+  check(
+    gptCalls.every((call) => call.path === "/v1/responses"),
+    "it used the Responses API",
+  );
+  const gptOutput = JSON.stringify(gptCalls.at(-1)?.body.input ?? []);
+  check(gptOutput.includes("function_call_output"), "the tool result went back to GPT");
+  check(gptOutput.includes(NOTE), "the tool result held the file's contents");
+  check(
+    !gptOutput.includes("x-anthropic-billing-header"),
+    "Anthropic's attribution line was removed",
+  );
+
+  console.log("\nA tool loop on Gemini, through Chat Completions");
+  const signature = { google: { thought_signature: "smoke-signature" } };
+  h.gateway.upstream.script(
+    GEMINI,
+    chatToolStream(GEMINI, "call_read_2", "Read", readFile, signature),
+    textStream(GEMINI, "Gemini finished the task"),
+  );
+  const onGemini = await runClaude("Read note.txt.", directToGateway(), HAIKU, withTools);
+  check(onGemini.code === 0, "Claude Code exits successfully");
+  check(onGemini.result.includes("Gemini finished the task"), "the final answer came from Gemini");
+  const geminiBody = JSON.stringify(h.gateway.upstream.requestsFor(GEMINI).at(-1)?.body ?? {});
+  check(geminiBody.includes(NOTE), "the tool result held the file's contents");
+  check(geminiBody.includes("smoke-signature"), "Gemini's thought signature was returned");
+
+  console.log("\nMoving from the plan to GPT in the middle of a task");
+  h.anthropic.setAlways(SONNET, planLimitStep(h.clock.now));
+  h.gateway.upstream.script(
+    GPT,
+    responsesToolStream(GPT, "call_read_3", "Read", readFile),
+    responsesTextStream(GPT, "Continued on GPT"),
+  );
+  const moved = await runClaude("Read note.txt.", throughEdge(), SONNET, withTools);
+  check(moved.code === 0, "Claude Code exits successfully");
+  check(moved.result.includes("Continued on GPT"), "the task finished on GPT");
+  check(!sentToVps().includes(LOGIN_TOKEN), "the login token did not go to the VPS");
+
   console.log("\nWith the VPS stopped");
-  for (const model of MODELS) h.anthropic.clear(model);
+  for (const model of CLAUDE_MODELS) h.anthropic.clear(model);
   rmSync(h.paths.stateFile, { force: true });
   await h.restartEdge({ gatewayUrl: new URL("http://127.0.0.1:9") });
   const withoutVps = await runClaude("Are you there?", throughEdge());

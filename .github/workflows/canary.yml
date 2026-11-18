@@ -1,0 +1,38 @@
+name: Client canary
+
+# Runs the newest Claude Code and Codex releases against the gateway, so a change in
+# either client is noticed here first. It uses fake providers and no credentials.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+  push:
+    branches: ["phase-*"]
+    paths:
+      - ".github/workflows/canary.yml"
+      - "apps/edge/dev/**"
+      - "apps/gateway/dev/**"
+
+permissions:
+  contents: read
+
+jobs:
+  clients:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install the newest clients
+        run: npm install --global @anthropic-ai/claude-code@latest @openai/codex@latest
+      - name: Allow Codex's sandbox on this runner
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: claude --version
+      - run: codex --version
+      - run: pnpm smoke:claude-code
+      - run: pnpm smoke:codex

@@ -13,6 +13,8 @@
     "dev": "pnpm --filter @llm-router/gateway dev",
     "demo": "pnpm --filter @llm-router/gateway demo",
     "smoke:claude-code": "pnpm --filter @llm-router/edge smoke:claude-code",
+    "smoke:codex": "pnpm --filter @llm-router/gateway smoke:codex",
+    "smoke:clients": "pnpm --filter @llm-router/gateway smoke:clients",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",

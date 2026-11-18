@@ -140,7 +140,10 @@ export function planLimitStep(clockMs: number, overrides: Record<string, string>
   });
 }
 
-export async function startHarness(yaml: string = CLAUDE_CONFIG): Promise<Harness> {
+export async function startHarness(
+  yaml: string = CLAUDE_CONFIG,
+  models?: string,
+): Promise<Harness> {
   const dir = mkdtempSync(join(tmpdir(), "llmr-edge-test-"));
   const paths = edgePaths({
     HOME: dir,
@@ -148,7 +151,7 @@ export async function startHarness(yaml: string = CLAUDE_CONFIG): Promise<Harnes
     LLMR_EDGE_STATE_DIR: join(dir, "state"),
   });
   const anthropic = await new FakeUpstream().start();
-  const gateway = await startGateway({ yaml });
+  const gateway = await startGateway({ yaml, ...(models ? { models } : {}) });
   const toGateway = await new RecordingProxy(gateway.url).start();
   const notes: string[] = [];
   const clock = { now: Date.now() };
