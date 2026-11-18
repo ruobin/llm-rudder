@@ -9,6 +9,8 @@ coverage/
 .env.*
 !.env.example
 config/config.yaml
+# Default location of the ChatGPT sign-in when running outside Docker
+data/
 
 # Logs
 *.log

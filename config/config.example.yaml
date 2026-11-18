@@ -66,6 +66,15 @@ accounts:
     cost_class: prepaid
     trust: first_party
 
+  # Your ChatGPT plan, through OpenAI's Sign in with ChatGPT. OpenAI offers this route
+  # to open-source apps, so leave it off until your copy of this project is public.
+  # It is for your own use. See "Use your ChatGPT plan" in the README.
+  chatgpt-plan:
+    kind: chatgpt_plan
+    cost_class: prepaid
+    trust: first_party
+    enabled: false
+
 # Targets are tried in order. Replace the my-gateway models with ones your gateway serves.
 tiers:
   frontier:
@@ -73,6 +82,7 @@ tiers:
     prefer: quality # quality: use metered targets before falling back; cost: fall back first
     context_window: 200000
     targets:
+      - { account: chatgpt-plan, model: gpt-6.2-astra, effort: high }
       - { account: anthropic-key, model: claude-opus-5-5 }
       - { account: my-gateway, model: claude-opus-5-5 }
       - { account: openai-key, model: gpt-6.2-astra, effort: high }
@@ -82,6 +92,7 @@ tiers:
     prefer: quality
     context_window: 200000
     targets:
+      - { account: chatgpt-plan, model: gpt-6.2-sol }
       - { account: gemini-key, model: gemini-4-hydrogen }
       - { account: anthropic-key, model: claude-sonnet-5-5 }
       - { account: my-gateway, model: claude-sonnet-5-5 }
@@ -91,6 +102,7 @@ tiers:
     prefer: quality
     context_window: 200000
     targets:
+      - { account: chatgpt-plan, model: gpt-6-luna }
       - { account: gemini-key, model: gemini-3.5-flash-lite }
       - { account: openai-key, model: gpt-6-luna }
       - { account: anthropic-key, model: claude-haiku-5-5 }

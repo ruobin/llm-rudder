@@ -16,8 +16,11 @@ RUN pnpm --filter @llm-router/gateway deploy --legacy --prod /out
 FROM node:26-slim
 ENV NODE_ENV=production
 ENV LLMR_CONFIG=/app/config/config.yaml
+ENV LLMR_STATE_DIR=/state
 WORKDIR /app
 COPY --from=build /out ./
+# The only writable path that survives an update. It holds the ChatGPT sign-in.
+RUN mkdir -p /state && chown node:node /state && chmod 700 /state
 USER node
 EXPOSE 4141
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

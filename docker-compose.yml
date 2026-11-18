@@ -13,6 +13,7 @@ services:
       DATABASE_URL: mysql://llmr:${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}@mysql:3306/llm_router
     volumes:
       - ./config:/app/config:ro
+      - gateway-state:/state
     ports:
       # Only reachable from this host. Caddy or Nginx handles public traffic.
       - 127.0.0.1:${LLMR_PORT:-4141}:4141
@@ -88,6 +89,7 @@ services:
       - gateway
 
 volumes:
+  gateway-state:
   mysql-data:
   caddy-data:
   caddy-config:
