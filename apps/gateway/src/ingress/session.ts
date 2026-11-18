@@ -11,11 +11,13 @@ const SESSION_HEADERS = [
 ];
 const MAX_TEXT_CHARS = 4000;
 
-function messageText(message: unknown): string {
-  const content = (message as JsonObject | null)?.content;
-  const text = typeof content === "string" ? content : JSON.stringify(content ?? "");
+function textOf(content: unknown): string {
+  if (content === undefined || content === null) return "";
+  const text = typeof content === "string" ? content : JSON.stringify(content);
   return text.slice(0, MAX_TEXT_CHARS);
 }
+
+const messageText = (message: unknown) => textOf((message as JsonObject | null)?.content);
 
 /**
  * Identifies a conversation. Clients that send no session id are recognized by
@@ -35,10 +37,15 @@ export function deriveSessionKey(
   if (typeof body.prompt_cache_key === "string" && body.prompt_cache_key !== "") {
     return shortHash(`${clientId}\u0000cache\u0000${body.prompt_cache_key}`);
   }
-  const messages = Array.isArray(body.messages) ? (body.messages as JsonObject[]) : [];
-  const system = messages.find((m) => m?.role === "system" || m?.role === "developer");
-  const user = messages.find((m) => m?.role === "user");
-  return shortHash(
-    `${clientId}\u0000derived\u0000${messageText(system)}\u0000${messageText(user)}`,
-  );
+  // The Responses API calls its messages "input", and may send plain text there.
+  const history = body.messages ?? body.input;
+  const messages = Array.isArray(history) ? (history as JsonObject[]) : [];
+  const system =
+    textOf(body.system ?? body.instructions) ||
+    messageText(messages.find((m) => m?.role === "system" || m?.role === "developer"));
+  const user =
+    typeof history === "string"
+      ? textOf(history)
+      : messageText(messages.find((m) => m?.role === "user"));
+  return shortHash(`${clientId}\u0000derived\u0000${system}\u0000${user}`);
 }

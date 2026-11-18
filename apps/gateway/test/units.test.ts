@@ -506,6 +506,26 @@ describe("small helpers", () => {
     );
   });
 
+  it("tells Responses conversations apart without a session header", () => {
+    const key = (body: Record<string, unknown>) => deriveSessionKey({}, body, "c");
+    const user = (text: string) => ({ role: "user", content: text });
+    expect(key({ input: "First" })).not.toBe(key({ input: "Second" }));
+    expect(key({ input: [user("First")] })).not.toBe(key({ input: [user("Second")] }));
+    expect(key({ input: [user("First")] })).toBe(
+      key({ input: [user("First"), { role: "assistant", content: "Hi" }, user("More")] }),
+    );
+    expect(key({ instructions: "A", input: "Hi" })).not.toBe(
+      key({ instructions: "B", input: "Hi" }),
+    );
+  });
+
+  it("uses the Messages system prompt to tell conversations apart", () => {
+    const messages = [{ role: "user", content: "Hi" }];
+    expect(deriveSessionKey({}, { system: "A", messages }, "c")).not.toBe(
+      deriveSessionKey({}, { system: "B", messages }, "c"),
+    );
+  });
+
   it("normalizes usage", () => {
     expect(
       parseUsage({
