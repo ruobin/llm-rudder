@@ -184,6 +184,7 @@ Each app uses your gateway's address followed by `/v1`, its own key, and `fronti
 | [Deployment guide](docs/DEPLOYMENT.md) | Running it on a server: access, updates, alerts, metrics and backups         |
 | [Design](docs/DESIGN.md)               | The architecture and the reasons behind it                                   |
 | [To-do list](docs/TODO.md)             | What is finished, and what still needs real-world testing                    |
+| [Contributing](CONTRIBUTING.md)        | A tour of the code, and how to change and test it                            |
 
 ## Project status
 
