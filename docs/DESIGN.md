@@ -2,7 +2,7 @@
 
 |           |                                                                                                                                                                |
 | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status    | Draft 2, 2026-11-18. It replaces the local-first Python Draft 1, which stays in git history.                                                                   |
+| Status    | Draft 2, updated 2026-11-18 with Phases 1 and 2 as built. It replaces the local-first Python Draft 1, which stays in git history.                              |
 | Scope     | A personal model gateway on your own VPS, with a phased path to a production-grade service                                                                     |
 | Work plan | [`TODO.md`](TODO.md) splits the work into phases with checklists and exit criteria.                                                                            |
 | Reference | [`ROUTER_DESIGN.md`](ROUTER_DESIGN.md), an earlier proposal by another agent. [Appendix B](#appendix-b-what-changed) lists what this design keeps and changes. |
@@ -104,12 +104,14 @@ This section reflects provider documentation read on 2026-11-18 ([Appendix C](#a
 
 ### 3.1 Claude plan
 
+Re-read on 2026-11-18, before Phase 2 was built.
+
 - With only `ANTHROPIC_BASE_URL` set, Claude Code keeps your claude.ai login, and `Authorization` carries the login token. A gateway passing that traffic to Anthropic "must forward `Authorization` and the OAuth capability in `anthropic-beta`".
 - Setting `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` or `apiKeyHelper` **replaces** the subscription login.
-- The legal page says developers "may not collect, store, or intermediate Claude.ai credentials or session tokens", and OAuth is meant for "ordinary use of Claude Code and other native Anthropic applications". It also says Anthropic may enforce this "without prior notice". The docs do not reconcile this with the gateway instructions, and they say nothing about a single-user gateway.
-- A plan limit is a `429` with `anthropic-ratelimit-unified-*` headers. A `429` without them is a temporary throttle.
+- The legal page says developers "may not collect, store, or intermediate Claude.ai credentials or session tokens", and that third-party developers may not "route requests through Free, Pro, Max, or Ultra plan credentials on behalf of their users". OAuth is meant for "ordinary use of Claude Code and other native Anthropic applications". The page also says it does not prevent "an end user from signing in to the unmodified Claude Code binary with their own Claude subscription", and that Anthropic may enforce its rules "without prior notice". The docs do not reconcile this with the gateway instructions, and they say nothing about a single-user gateway.
+- Claude Code reads `anthropic-ratelimit-unified-*` headers to show plan usage and "on a `429` to tell a plan limit or spend cap from a temporary throttle". They appear on ordinary responses too, so their presence alone does not mean a limit. Anthropic does not document each name and value.
 
-**What the design does.** The most conservative setup that still gives automatic failover is a local helper. Claude Code talks to `llmr-edge` on `127.0.0.1`. The edge forwards the request unchanged to `api.anthropic.com`, from your own network, with your own login. Only when Anthropic reports a plan limit does the edge send the request to the VPS, **with the Claude token removed**. No Claude credential reaches the VPS, and no other client can use the Claude plan.
+**What the design does.** The most conservative setup that still gives automatic failover is a local helper. Claude Code talks to `llmr-edge` on `127.0.0.1`. The edge forwards the request unchanged to `api.anthropic.com`, from your own network, with your own login. Only when Anthropic reports a plan limit does the edge send the request to the VPS, **with the Claude token removed**. No Claude credential reaches the VPS, no other client can use the Claude plan, and Claude Code itself stays unmodified.
 
 The tension in Anthropic's wording remains even for a local helper. If you want no router in that path at all, use the fallback in [Appendix A](#appendix-a-client-setup): run Claude Code directly, and switch to gateway mode by hand when the plan runs out.
 
@@ -443,10 +445,10 @@ llm-router/
 │   │   │   ├── dev/             # fake upstream and the demo
 │   │   │   ├── config/          # Zod schema, YAML loader, compat profiles
 │   │   │   ├── auth/            # client keys, rate limits, failed-auth throttle
-│   │   │   ├── ingress/         # chat completions, models, admin routes
+│   │   │   ├── ingress/         # chat, messages, edge and admin routes
 │   │   │   ├── routing/         # resolver, planner
-│   │   │   ├── execution/       # executor, client stream, notices
-│   │   │   ├── upstream/        # OpenAI-compatible adapter, classifier, SSE parser, tool extras
+│   │   │   ├── execution/       # executor, one protocol per API format, notices
+│   │   │   ├── upstream/        # HTTP client, classifiers, SSE parser, tool extras
 │   │   │   ├── state/           # quota state machine and stores
 │   │   │   ├── billing/         # pricing, budgets
 │   │   │   ├── ledger/          # request and attempt records
@@ -454,9 +456,10 @@ llm-router/
 │   │   │   └── db/              # Drizzle schema and migrations runner
 │   │   ├── drizzle/             # generated SQL migrations
 │   │   └── test/                # unit and end-to-end tests, fake upstream
-│   ├── edge/                    # Phase 2: local helper for Claude Code
+│   ├── edge/                    # llmr-edge, the local helper for Claude Code
 │   └── dashboard/               # Phase 5: Next.js
-├── packages/                    # shared code, once a second app needs it
+├── packages/
+│   └── shared/                  # header rules, byte-exact JSON edits, edge protocol
 ├── config/                      # example config and pricing
 ├── deploy/                      # Dockerfile, Caddyfile, Nginx example
 ├── docs/
@@ -568,20 +571,31 @@ pricing_file: pricing.yaml
 - `quality` (default): use every target in this tier, including metered ones within budget, before moving to the next tier.
 - `cost`: use all non-metered targets across the tier and its fallback tiers first, and only then spend on metered targets.
 
-**Added in later phases:**
+**For Claude Code (Phase 2):**
 
 ```yaml
+clients:
+  - { id: claude-code, key_env: LLMR_KEY_CLAUDE_CODE, notice: none, edge: true }
+
 accounts:
-  anthropic-key: {
-      api: anthropic.messages,
-      base_url: https://api.anthropic.com,
-      api_key_env: ANTHROPIC_API_KEY,
-      cost_class: metered,
-      budget: { daily_usd: 5 },
-    } # Phase 2
-  claude-plan: { kind: edge_only, cost_class: prepaid } # Phase 2, never used by the VPS
-  chatgpt-plan: { kind: chatgpt_plan, cost_class: prepaid } # Phase 4
+  anthropic-key:
+    api: anthropic.messages # the default is openai.chat
+    base_url: https://api.anthropic.com
+    api_key_env: ANTHROPIC_API_KEY
+    cost_class: metered
+    trust: first_party
+    budget: { daily_usd: 10, monthly_usd: 100 }
+  claude-plan: { kind: edge_only, cost_class: prepaid, trust: first_party } # never called by the VPS
+
+edge:
+  plan_account: claude-plan
+  plan_models: { frontier: claude-opus-5-5, medium: claude-sonnet-5-5, flash: claude-haiku-5-5 }
+  report_interval_s: 300
 ```
+
+An `anthropic.messages` account sends its key in `x-api-key`. Set `auth_header: bearer` for a third-party gateway that expects `Authorization`. Until Phase 3 adds translation, a request only goes to accounts that speak its format.
+
+**Added in Phase 4:** `chatgpt-plan: { kind: chatgpt_plan, cost_class: prepaid }`.
 
 **Validation.** Config that breaks these rules does not load:
 
@@ -589,6 +603,7 @@ accounts:
 - Every client key is at least 32 characters and unique.
 - `fallback_tiers` cannot include the tier itself.
 - A value that looks like a secret (`sk-…`, `llmr_…`) is rejected inside the YAML.
+- An `edge_only` account cannot be a tier target, and `anthropic.messages` targets cannot set `params`, because their request body is passed through.
 - A warning is printed when a metered account has no budget, or a tier has only one target.
 
 ### 8.4 Core types
@@ -913,16 +928,16 @@ Phase 1 uses it only so that the note appears once per conversation.
 
 ### 8.12 The edge (Phase 2)
 
-`llmr-edge` is a small Node.js process on each machine that runs Claude Code. It starts at login through launchd or systemd and listens on `127.0.0.1:4142`.
+`llmr-edge` (`apps/edge`) is a small Node.js process on each computer that runs Claude Code. It builds into one file with no runtime dependencies, starts at login through launchd or systemd, and listens only on `127.0.0.1:4142`.
 
-**It holds:** the router key, and a local copy of Claude plan state.
-**It never stores or logs:** the Claude token. The token exists only inside the request being forwarded.
+**It holds:** the router key and an edge key in a private config file, the latest routing plan, and plan state.
+**It never stores or logs:** the Claude token or any request content. The token exists only inside the request being forwarded.
 
-The edge walks a list of steps, fetched from the gateway and cached so it works offline:
+`GET /router/edge/plan` returns a list of steps for each Claude model pattern. The edge keeps a copy, so routing survives a VPS outage:
 
 ```text
 Request for claude-opus-5-5 (tier frontier):
-  plan:claude-opus-5-5
+  plan                       ← the model Claude Code asked for
   gateway:frontier
   plan:claude-sonnet-5-5     ← fallback: Sonnet may still have quota
   gateway:medium
@@ -930,12 +945,36 @@ Request for claude-opus-5-5 (tier frontier):
   gateway:flash
 ```
 
-- A `plan:` step goes to `api.anthropic.com` with Claude Code's request unchanged, except `model` on a fallback step.
-- A `gateway:` step goes to the VPS with the router key, `X-LLMR-Tier`, and `X-LLMR-No-Fallback: 1`. It **removes** `Authorization` and the `oauth-*` value from `anthropic-beta`.
-- A plan limit is detected from the `429` and its `anthropic-ratelimit-unified-*` headers. Exact header names are not public, so Phase 0 records real ones.
-- If the gateway is unreachable, the edge returns Anthropic's original `429`, and Claude Code shows its normal message.
-- If the VPS is down, plan traffic is unaffected, because it does not pass through the VPS.
-- `llmr-edge statusline` prints a short warning for Claude Code's `statusLine` setting. The edge also reports plan state to the gateway, without any credential, so the dashboard shows the whole picture.
+A tier with `prefer: cost` lists every plan step first. A tier with no account that speaks Anthropic's format has no gateway step until Phase 3.
+
+- A `plan` step goes to `api.anthropic.com` with Claude Code's request unchanged, except `model` on a fallback step.
+- A `gateway` step goes to the VPS with the router key, `X-LLMR-Tier` and `X-LLMR-No-Fallback: 1`, so the edge stays in control of the order.
+
+| What happens                                                                    | What the edge does                                                                                        |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Anthropic answers with anything except a plan limit, including 401, 429 and 5xx | Returns it unchanged. Claude Code refreshes its login and retries by itself.                              |
+| Anthropic reports a plan limit                                                  | Records the limit and moves to the next step.                                                             |
+| A limit is already recorded                                                     | Skips plan steps for the affected models until the reset. The next request then tries the plan again.     |
+| The gateway streams an answer                                                   | Passes it through.                                                                                        |
+| The gateway returns an upstream's client error (`x-llmr-upstream-error: 1`)     | Returns it unchanged, because Claude Code's recovery depends on the exact wording.                        |
+| The gateway fails in any other way, or cannot be reached                        | Moves to the next step. These errors never reach Claude Code, where a 401 would look like a failed login. |
+| No step can serve                                                               | Returns Anthropic's original `429`, so Claude Code shows its normal limit message.                        |
+| Every step was skipped                                                          | Asks Anthropic once anyway, for an authentic answer.                                                      |
+
+**Detecting a plan limit.** A `429` counts as a plan limit when it has `anthropic-ratelimit-unified-*` headers and one of these is true: the overall status or a window's status is anything other than `allowed` or `allowed_warning`, a window's utilization is 1 or more, or `x-should-retry` is `false`. Any other `429` is a temporary throttle. `overage` values are ignored, because they describe extra usage rather than the plan. The edge waits for the last exhausted window's reset, or the general reset, or a `retry-after` above 60 seconds. With no reset time it backs off from 15 minutes up to 4 hours. A limit on one model family (for example `seven_day_opus`) blocks only that family.
+
+These rules are a best reading. One public report shows the header names on a successful response, but no public source shows a real limit response. So every plan `429` is saved to `edge-limit-samples.jsonl`, with rate-limit headers only, and `llmr-edge doctor` reports how many exist. If a real limit is misread, Claude Code simply shows its normal message and nothing is sent to the gateway.
+
+**Keeping the token local:**
+
+- Gateway requests are built from an allowlist: `anthropic-*` headers without credential-like names, session IDs, and the router key. The `oauth-*` beta value is removed.
+- A request whose body contains its own credential, for example after a tool read a credentials file, never goes to the gateway.
+- The login can only go to `https://api.anthropic.com`. Other hosts are refused at startup, except loopback for tests, and a crafted path cannot change the host.
+- Reports to the gateway hold plan state only, and the gateway rejects any other field.
+
+**Who can use the edge.** Model requests must carry `x-llmr-edge-key`, which Claude Code sends through `ANTHROPIC_CUSTOM_HEADERS` without affecting the login. Requests with an `Origin` header or an unexpected `Host` are refused, so a web page cannot reach the port or spend through the router key.
+
+**Warnings.** `llmr-edge statusline` prints one line for Claude Code's `statusLine` setting. Desktop notifications announce a limit, the move to the gateway and recovery, at most once per message every 15 minutes. Reports let the gateway show plan state and send its push notifications.
 
 ### 8.13 Passthrough and translation
 
@@ -943,7 +982,7 @@ Request for claude-opus-5-5 (tier frontier):
 
 These come from Claude Code's gateway compatibility guide and apply on the edge and on the gateway's Anthropic adapter.
 
-**May change:** `model`, when the target differs; and auth headers.
+**May change:** `model`, when the target differs; and auth headers. The model is replaced in the original bytes, because parsing and re-encoding could reorder numeric keys or change number formats and so break the prompt cache.
 
 **Must not change:**
 
@@ -951,9 +990,14 @@ These come from Claude Code's gateway compatibility guide and apply on the edge 
 - `cache_control` markers, wherever they appear.
 - `anthropic-version` and `anthropic-beta`, and unknown `anthropic-*` headers and body fields.
 - The order of `messages` and `tools`.
-- The event stream, including `ping` events.
+- The event stream, including `ping` events once output has started.
+- Inference requests use `/v1/messages?beta=true`, so routes match on the path and the `beta` value is kept.
 
 **On the way back:** error bodies are forwarded unmodified; `retry-after` is integer seconds; `x-should-retry` and `anthropic-ratelimit-unified-*` are forwarded.
+
+**Commit point.** The first `content_block_*` or `message_delta` event. An `error` event before it moves to the next target. After it, the gateway sends an `error` event and ends the stream, because Claude Code treats a stream that stops early as a dropped connection.
+
+**Moving from the plan to an API key.** The new account starts with an empty prompt cache, so the first request pays a full cache write. Anthropic's docs say a thinking block the new account cannot use "never causes an error": the API drops it, and Claude answers without that reasoning. If a signature is rejected anyway, Claude Code removes earlier thinking blocks and retries, which only works because error bodies are forwarded unchanged. The docs do not cover blocks produced under a claude.ai login specifically, so this needs confirming on a real plan limit.
 
 #### Translation (Phase 3)
 
@@ -1018,11 +1062,11 @@ Anthropic's own OpenAI-compatible endpoint is **not** used. Its docs say it is "
 | `GET /router/codex/models`                          | Codex model catalog                             | Client key    | 3     |
 | `GET /metrics`                                      | Prometheus                                      | Internal only | 5     |
 
-**Authentication.** `Authorization: Bearer llmr_…`, or `x-api-key`.
+**Authentication.** `Authorization: Bearer llmr_…`, or `x-api-key`. The edge routes need a client with `edge: true`.
 
-**Optional request headers:** `X-LLMR-Tier`, `X-LLMR-No-Fallback`, `X-Session-Id`.
+**Optional request headers:** `X-LLMR-Tier`, `X-LLMR-No-Fallback`, `X-Session-Id`. From an edge client only: `X-LLMR-Requested-Tier` and `X-LLMR-Plan-Exhausted`, which record what happened before the request reached the gateway.
 
-**Errors** use the OpenAI shape, so SDKs handle them normally:
+**Errors** use the OpenAI shape, so SDKs handle them normally. Routes under `/v1/messages` use Anthropic's shape instead:
 
 ```json
 {
@@ -1122,10 +1166,13 @@ models:
   gemini-4-carbon: { input: 4, output: 20, cached_input: 0.20 } # price from 2026-12-01
   gemini-4-hydrogen: { input: 1.50, output: 7.50, cached_input: 0.075 }
   gemini-3.5-flash-lite: { input: 0.30, output: 2.50, cached_input: 0.03 }
-  claude-opus-5-5: { input: 4, output: 20, cached_input: 0.20 }
-  claude-sonnet-5-5: { input: 2, output: 10, cached_input: 0.10 }
-  claude-haiku-5-5: { input: 0.10, output: 0.50 }
+  claude-opus-5-5:
+    { input: 4, output: 20, cached_input: 0.20, cache_write_5m: 5, cache_write_1h: 8 }
+  claude-sonnet-5-5:
+    { input: 2, output: 10, cached_input: 0.10, cache_write_5m: 2.50, cache_write_1h: 4 }
 ```
+
+Anthropic bills cache writes above the input price and reports them separately, so the ledger records them too. `long_context` sets different prices above an input size, which Claude Haiku 5.5 uses for prompts over 100,000 tokens.
 
 **Budgets** apply per metered account, per UTC day and month:
 
@@ -1139,19 +1186,20 @@ Spend is an atomic `INSERT ... ON DUPLICATE KEY UPDATE`. Ledger writes go throug
 
 The VPS holds real API keys and is reachable from the internet, so security is part of Phase 1.
 
-| Threat                          | Control                                                                                                                                                          |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stranger calls the gateway      | Every `/v1/*` route needs a client key of at least 32 random characters, checked before the body is read. Keys are compared as SHA-256 digests in constant time. |
-| Key guessing                    | Failed authentication is throttled per IP.                                                                                                                       |
-| A leaked client key burns money | Per-client `rpm` and concurrency limits, per-account budgets, one key per client so one can be revoked alone.                                                    |
-| Traffic interception            | TLS at Caddy or Nginx. The gateway port is not published to the internet.                                                                                        |
-| Secrets in logs                 | Pino redacts `authorization`, `x-api-key` and related headers. Prompts and completions are never logged. Stored session identifiers are hashes.                  |
-| Secrets in git                  | `.env` is ignored. The config rejects inline secrets. CI can add a secret scan.                                                                                  |
-| Admin API exposure              | A separate admin key, and the reverse proxy blocks `/router/*` from the internet by default. Use an SSH tunnel or Tailscale.                                     |
-| Container escape                | Runs as a non-root user with a read-only filesystem, no capabilities, and `no-new-privileges`.                                                                   |
-| Dependency compromise           | Few dependencies, locked versions, frozen installs, delayed adoption of new releases.                                                                            |
-| Subscription tokens             | The Claude token never reaches the VPS. ChatGPT tokens (Phase 4) sit in an owner-only file and are only sent to OpenAI.                                          |
-| Request loops and abuse         | Hop guard, body size limit and request deadline.                                                                                                                 |
+| Threat                          | Control                                                                                                                                                                                         |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stranger calls the gateway      | Every `/v1/*` route needs a client key of at least 32 random characters, checked before the body is read. Keys are compared as SHA-256 digests in constant time.                                |
+| Key guessing                    | Failed authentication is throttled per IP.                                                                                                                                                      |
+| A leaked client key burns money | Per-client `rpm` and concurrency limits, per-account budgets, one key per client so one can be revoked alone.                                                                                   |
+| Traffic interception            | TLS at Caddy or Nginx. The gateway port is not published to the internet.                                                                                                                       |
+| Secrets in logs                 | Pino redacts `authorization`, `x-api-key` and related headers. Prompts and completions are never logged. Stored session identifiers are hashes.                                                 |
+| Secrets in git                  | `.env` is ignored. The config rejects inline secrets. CI can add a secret scan.                                                                                                                 |
+| Admin API exposure              | A separate admin key, and the reverse proxy blocks `/router/*` from the internet, except `/router/edge/*`, which needs an `edge: true` client key. Use an SSH tunnel or Tailscale for the rest. |
+| Container escape                | Runs as a non-root user with a read-only filesystem, no capabilities, and `no-new-privileges`.                                                                                                  |
+| Dependency compromise           | Few dependencies, locked versions, frozen installs, delayed adoption of new releases.                                                                                                           |
+| Subscription tokens             | The Claude token never reaches the VPS ([section 8.12](#812-the-edge-phase-2)). ChatGPT tokens (Phase 4) sit in an owner-only file and are only sent to OpenAI.                                 |
+| Other programs using the edge   | It listens on loopback only, needs its own key for model requests, and refuses browser origins and unexpected `Host` values.                                                                    |
+| Request loops and abuse         | Hop guard, body size limit and request deadline.                                                                                                                                                |
 
 The host itself needs the usual care: SSH keys only, a firewall allowing only 22, 80 and 443, and automatic security updates.
 
@@ -1195,15 +1243,15 @@ Access is protected by a single-user login, and it can additionally sit behind T
 
 ### 8.20 Testing
 
-| Level                  | What it covers                                                                                                                                              |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Unit**               | Resolver, planner, classifier, quota state machine (fake clock), SSE parser, budgets, notices.                                                              |
-| **End to end**         | The real gateway against a scriptable fake upstream, over real HTTP: streaming, failover, fallback, mid-stream failure, keep-alives and client disconnects. |
-| **Contract**           | The official `openai` SDK as a client, for streaming, tools and error handling.                                                                             |
-| **Database**           | Migrations and budget counters against real MySQL in CI.                                                                                                    |
-| **Fixtures**           | Recorded, scrubbed upstream responses from Phase 0, including your New API instance.                                                                        |
-| **Client smoke tests** | OpenCode, Pi, Open WebUI, and later Claude Code and Codex, run by hand at each release.                                                                     |
-| **Load (Phase 5)**     | Added latency and memory per stream against the fake upstream.                                                                                              |
+| Level                  | What it covers                                                                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Unit**               | Resolver, planner, classifier, quota state machine (fake clock), SSE parser, budgets, notices.                                                                           |
+| **End to end**         | The real gateway against a scriptable fake upstream, over real HTTP: streaming, failover, fallback, mid-stream failure, keep-alives and client disconnects.              |
+| **Contract**           | The official `openai` and `@anthropic-ai/sdk` packages as clients, for streaming, tools and error handling.                                                              |
+| **Database**           | Migrations and budget counters against real MySQL in CI.                                                                                                                 |
+| **Fixtures**           | Recorded, scrubbed upstream responses from Phase 0, including your New API instance.                                                                                     |
+| **Client smoke tests** | OpenCode, Pi, Open WebUI, and later Codex, run by hand at each release. `pnpm smoke:claude-code` runs the real Claude Code CLI with a fake login and no outside network. |
+| **Load (Phase 5)**     | Added latency and memory per stream against the fake upstream.                                                                                                           |
 
 `pnpm demo` runs the whole fallback story locally with fake upstreams and no credentials.
 
@@ -1368,22 +1416,26 @@ flowchart LR
 | D12 | Gemini through an API key and plan credit               | Using the plan login                     | Google warns of suspension or termination.                                                                                                                                                       |
 | D13 | Open WebUI for chat                                     | Building a chat UI                       | Mature, popular and already compatible.                                                                                                                                                          |
 | D14 | Ordered lists as routing policy                         | Weights or optimizers                    | Predictable and easy to debug.                                                                                                                                                                   |
+| D15 | The gateway sends the edge a step list                  | Routing rules inside the edge            | Routing policy stays in one config file, and the edge keeps working from its saved copy.                                                                                                         |
+| D16 | A separate key between Claude Code and the edge         | Trusting anything on loopback            | The edge holds a key that can spend money. `ANTHROPIC_CUSTOM_HEADERS` adds the check without replacing the Claude login.                                                                         |
+| D17 | Replace `model` in the original bytes                   | Parse and re-encode the JSON             | It guarantees that nothing else changes, which keeps prompt caching and signatures intact.                                                                                                       |
 
 ---
 
 ## 13. Risks and open questions
 
-| Risk                                                                                                                                                     | Mitigation                                                                                                                               |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **Anthropic's rules on intermediating login tokens.** Even a local helper might be judged against that wording, and enforcement may come without notice. | The token stays local and goes only to Anthropic. Claude Code can run without the edge at any time. Ask Anthropic if you want certainty. |
-| **OpenAI's route does not address gateways that forward other clients' requests.**                                                                       | Keep it single-user, keep the repository open source, and put it behind `enabled: false`. Other targets take over if it stops working.   |
-| **Plan rules change again.**                                                                                                                             | Section 3 is re-checked per phase. One account can be turned off without affecting others.                                               |
-| **A leaked client key or a compromised VPS.**                                                                                                            | Section 8.17, low budgets, and provider-side spend limits. Rotate keys if in doubt.                                                      |
-| **The VPS is a single point of failure.**                                                                                                                | Restart policies and an uptime monitor now, Stage 3 later. Claude Code's plan traffic keeps working regardless.                          |
-| **Third-party gateways differ or misreport models.**                                                                                                     | Compat profiles, defensive classification, trust levels, and a mismatch log.                                                             |
-| **Fallback quietly lowers quality in long agent runs.**                                                                                                  | Notes, headers and push notifications, plus `X-LLMR-No-Fallback` where quality matters more than completion.                             |
-| **Translation quality differs across providers** (Phase 3).                                                                                              | Pins limit switching, and golden tests cover the codecs.                                                                                 |
-| **Metered spend surprises.**                                                                                                                             | Budgets on by default, notification on the first metered use each day, and provider-side caps.                                           |
+| Risk                                                                                                                                                     | Mitigation                                                                                                                                           |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Anthropic's rules on intermediating login tokens.** Even a local helper might be judged against that wording, and enforcement may come without notice. | The token stays local and goes only to Anthropic. Claude Code can run without the edge at any time. Ask Anthropic if you want certainty.             |
+| **Anthropic does not document plan-limit headers.** The edge could miss a limit or misread one.                                                          | A missed limit only means Claude Code shows its normal message. Every plan `429` is recorded locally, so the rules can be checked against real data. |
+| **OpenAI's route does not address gateways that forward other clients' requests.**                                                                       | Keep it single-user, keep the repository open source, and put it behind `enabled: false`. Other targets take over if it stops working.               |
+| **Plan rules change again.**                                                                                                                             | Section 3 is re-checked per phase. One account can be turned off without affecting others.                                                           |
+| **A leaked client key or a compromised VPS.**                                                                                                            | Section 8.17, low budgets, and provider-side spend limits. Rotate keys if in doubt.                                                                  |
+| **The VPS is a single point of failure.**                                                                                                                | Restart policies and an uptime monitor now, Stage 3 later. Claude Code's plan traffic keeps working regardless.                                      |
+| **Third-party gateways differ or misreport models.**                                                                                                     | Compat profiles, defensive classification, trust levels, and a mismatch log.                                                                         |
+| **Fallback quietly lowers quality in long agent runs.**                                                                                                  | Notes, headers and push notifications, plus `X-LLMR-No-Fallback` where quality matters more than completion.                                         |
+| **Translation quality differs across providers** (Phase 3).                                                                                              | Pins limit switching, and golden tests cover the codecs.                                                                                             |
+| **Metered spend surprises.**                                                                                                                             | Budgets on by default, notification on the first metered use each day, and provider-side caps.                                                       |
 
 **Open questions for you:**
 
@@ -1515,25 +1567,37 @@ console.log("served by", response.headers.get("x-llmr-target"));
 
 ### Claude Code (Phase 2)
 
-`~/.claude/settings.json`, with `llmr-edge` running:
+On each computer that runs Claude Code:
+
+```bash
+pnpm install && pnpm --filter @llm-router/edge build
+node apps/edge/dist/llmr-edge.mjs install     # adds ~/.local/bin/llmr-edge
+LLMR_ROUTER_KEY="$LLMR_KEY_CLAUDE_CODE" llmr-edge setup --gateway https://llm.example.com
+llmr-edge service install                     # starts it now and at each login
+llmr-edge doctor
+```
+
+`setup` prints the settings to merge into `~/.claude/settings.json`:
 
 ```json
 {
   "env": {
     "ANTHROPIC_BASE_URL": "http://127.0.0.1:4142",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-5-5",
-    "CLAUDE_CODE_GATEWAY_HINT_HEADERS": "1"
+    "ANTHROPIC_CUSTOM_HEADERS": "x-llmr-edge-key: <generated by setup>",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-5-5"
   },
   "statusLine": { "type": "command", "command": "llmr-edge statusline", "refreshInterval": 5 }
 }
 ```
 
-Do not set `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` or `apiKeyHelper`: each replaces your plan login. Remote Control is disabled while the base URL is not Anthropic's. The desktop app and cloud sessions do not read this setting.
+Do not set `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` or `apiKeyHelper`: each replaces your plan login. Remote Control is disabled while the base URL is not Anthropic's. The desktop app and cloud sessions do not read this setting. If you already have a status line, call `llmr-edge statusline` from your script.
+
+To stop using the edge, remove those settings. Claude Code then talks to Anthropic directly again.
 
 **Without the edge.** Run `claude` normally. When the plan runs out, start a gateway session and resume your work:
 
 ```bash
-ANTHROPIC_BASE_URL=https://llm.example.com ANTHROPIC_AUTH_TOKEN="$LLMR_KEY_CLAUDE" claude --resume
+ANTHROPIC_BASE_URL=https://llm.example.com ANTHROPIC_AUTH_TOKEN="$LLMR_KEY_CLAUDE_CODE" claude --resume
 ```
 
 ### Codex (Phase 3)
@@ -1593,7 +1657,9 @@ Read on 2026-11-17 and 2026-11-18.
 
 - Claude Code gateway docs: https://code.claude.com/docs/en/llm-gateway, https://code.claude.com/docs/en/llm-gateway-protocol, https://code.claude.com/docs/en/llm-gateway-connect, https://code.claude.com/docs/en/gateways
 - Legal and compliance: https://code.claude.com/docs/en/legal-and-compliance
-- Authentication, errors and status line: https://code.claude.com/docs/en/authentication, https://code.claude.com/docs/en/errors, https://code.claude.com/docs/en/statusline
+- Authentication, errors, status line, environment variables and models: https://code.claude.com/docs/en/authentication, https://code.claude.com/docs/en/errors, https://code.claude.com/docs/en/statusline, https://code.claude.com/docs/en/env-vars, https://code.claude.com/docs/en/model-config
+- Claude API errors, rate limits, streaming, token counting, prompt caching and pricing: https://platform.claude.com/docs/en/api/errors, https://platform.claude.com/docs/en/api/rate-limits, https://platform.claude.com/docs/en/build-with-claude/streaming, https://platform.claude.com/docs/en/build-with-claude/token-counting, https://platform.claude.com/docs/en/build-with-claude/prompt-caching, https://platform.claude.com/docs/en/about-claude/pricing
+- Preserved thinking: https://platform.claude.com/docs/en/build-with-claude/preserved-thinking
 - OpenAI SDK compatibility: https://platform.claude.com/docs/en/api/openai-sdk
 - Supported regions: https://www.anthropic.com/supported-countries
 
@@ -1623,4 +1689,5 @@ Read on 2026-11-17 and 2026-11-18.
 
 - LiteLLM incident: https://docs.litellm.ai/blog/security-update-march-2026
 - Gemini signature field path, a community report: https://github.com/microsoft/vscode/issues/296713
+- Names of the plan rate-limit headers on a successful response, a user report: https://github.com/anthropics/claude-code/issues/12829
 - Auditing model substitution: https://arxiv.org/abs/2504.04715

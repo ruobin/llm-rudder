@@ -8,7 +8,7 @@ This is the working checklist. [`DESIGN.md`](DESIGN.md) explains why. Each phase
 | ----------------------------------------- | ------------------------------------- | ---------- | ----------------------------- |
 | [0](#phase-0--verify-with-real-accounts)  | Verify assumptions with real accounts | 1–2 days   | Not started                   |
 | [1](#phase-1--mvp-gateway-on-the-vps)     | MVP gateway on the VPS                | ~1 week    | Code done; deployment pending |
-| [2](#phase-2--claude-code-lane)           | Claude Code lane                      | ~1 week    | Not started                   |
+| [2](#phase-2--claude-code-lane)           | Claude Code lane                      | ~1 week    | Code done; real login pending |
 | [3](#phase-3--translation-codex-and-pins) | Translation, Codex and pins           | 2–3 weeks  | Not started                   |
 | [4](#phase-4--chatgpt-plan)               | ChatGPT plan                          | ~1 week    | Not started                   |
 | [5](#phase-5--dashboard-and-hardening)    | Dashboard and hardening               | 2–3 weeks  | Not started                   |
@@ -40,8 +40,8 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 
 **Claude Code**
 
-- [ ] Build a throwaway local passthrough proxy and confirm Claude Code keeps its plan login through `127.0.0.1`.
-- [ ] Record the real `anthropic-ratelimit-unified-*` headers on normal responses, and on a plan-limit `429` when one occurs.
+- [ ] **(you)** Run Claude Code through `llmr-edge` and confirm `/status` still shows your claude.ai login.
+- [ ] **(you)** When a real plan limit occurs, check `edge-limit-samples.jsonl` against the detection rules in `DESIGN.md` section 8.12.
 
 **ChatGPT plan** (can wait until Phase 4)
 
@@ -131,25 +131,27 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 
 **Goal:** Claude Code runs on your Claude plan, and keeps working on an Anthropic API key when the plan runs out.
 
-- [ ] Re-check Anthropic's gateway and legal pages
-- [ ] Extract shared code into `packages/`
-- [ ] `POST /v1/messages` and `/v1/messages/count_tokens` on the gateway
-- [ ] Native Anthropic adapter, following the passthrough rules
-- [ ] `anthropic-key` account with prompt caching preserved
-- [ ] `apps/edge`: local server, launchd and systemd setup
-- [ ] Edge step list from `GET /router/edge/plan`, cached for offline use
-- [ ] Plan-limit detection from recorded headers
-- [ ] Strict token handling: strip Claude credentials on every gateway step, with tests
-- [ ] Plan state reported to the gateway without credentials
-- [ ] `llmr-edge statusline` and desktop notifications
-- [ ] Claude Code smoke test as a repeatable script
+- [x] Re-check Anthropic's gateway and legal pages (2026-11-18)
+- [x] Extract shared code into `packages/`
+- [x] `POST /v1/messages` and `/v1/messages/count_tokens` on the gateway
+- [x] Native Anthropic adapter, following the passthrough rules
+- [x] `anthropic-key` account with prompt caching preserved
+- [x] `apps/edge`: local server, launchd and systemd setup
+- [x] Edge step list from `GET /router/edge/plan`, cached for offline use
+- [x] Plan-limit detection, with every plan `429` recorded locally for checking
+- [x] Strict token handling: strip Claude credentials on every gateway step, with tests
+- [x] Plan state reported to the gateway without credentials
+- [x] `llmr-edge statusline` and desktop notifications
+- [x] Claude Code smoke test as a repeatable script: `pnpm smoke:claude-code`
 
 **Exit criteria**
 
-- [ ] Claude Code works on the plan through the edge, and `/status` shows your claude.ai login.
-- [ ] After a simulated plan limit, it continues on the Anthropic key with no action from you.
-- [ ] A test proves the Claude token never appears in any request to the VPS.
-- [ ] With the VPS stopped, Claude Code keeps working on the plan.
+- [x] Automated, with the real Claude Code CLI and a fake login: it works through the edge, and the login goes only to Anthropic's stand-in.
+- [x] Automated, the same way: after a simulated plan limit, it continues on the Anthropic key with no action from you.
+- [x] Automated: a test proves the Claude token never appears in any request to the VPS.
+- [x] Automated: with the VPS stopped, Claude Code keeps working on the plan.
+- [ ] **(you)** With your real login, Claude Code works through the edge and `/status` shows your claude.ai login.
+- [ ] **(you)** A real plan limit moves Claude Code to the Anthropic key, and back after the reset.
 
 ---
 
