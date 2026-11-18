@@ -69,6 +69,8 @@ export interface ChatGptCredential {
   saved_at: string;
   /** Unix seconds, when the token endpoint gives one. */
   earliest_refresh_at?: number;
+  /** These tokens came from renewing a sign-in, not from a new one. */
+  renewed?: boolean;
 }
 
 function text(value: unknown): string | undefined {
@@ -104,6 +106,7 @@ export function parseChatGptCredential(value: unknown): ChatGptCredential | null
     ...(typeof source.earliest_refresh_at === "number"
       ? { earliest_refresh_at: source.earliest_refresh_at }
       : {}),
+    ...(source.renewed === true ? { renewed: true } : {}),
   };
 }
 

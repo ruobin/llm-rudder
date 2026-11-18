@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +21,7 @@ import {
   importCredential,
   readCredential,
 } from "../src/chatgpt/session.js";
+import { FileLockBusyError, withFileLock } from "../src/chatgpt/file-lock.js";
 import { FakeChatGptAuth } from "../src/dev/fake-chatgpt.js";
 import { QuotaManager } from "../src/state/quota.js";
 import type { Classified, Target } from "../src/types.js";
@@ -80,6 +89,92 @@ describe("the VPS's copy of the sign-in", () => {
     rmSync(join(dir, "chatgpt"), { recursive: true });
     expect(() => importCredential(dir, ACCOUNT, { issuer: "x" })).toThrow(/usable/);
     expect(readFileSync(join(dir, "chatgpt", "host-id"), "utf8")).toMatch(/^urn:uuid:/);
+  });
+});
+
+describe("several instances sharing one sign-in", () => {
+  it("renews it only once when they all need a new token", async () => {
+    const instances = [newSession(), newSession(), newSession()];
+    time += HOUR;
+    auth.delayMs = 40;
+    const tokens = await Promise.all(instances.map((session) => session.accessToken()));
+    expect(auth.refreshes).toHaveLength(1);
+    expect(new Set(tokens)).toEqual(new Set(["access-1"]));
+    expect(signedIn).toBe(0);
+    expect(existsSync(`${file()}.lock`)).toBe(false);
+  });
+
+  it("uses another instance's renewal without treating it as a new sign-in", async () => {
+    const first = newSession();
+    const second = newSession();
+    expect(await second.accessToken()).toBe("access-0");
+    time += HOUR;
+    expect(await first.accessToken()).toBe("access-1");
+
+    expect(await second.accessToken()).toBe("access-1");
+    expect(auth.refreshes).toHaveLength(1);
+    expect(signedIn).toBe(0);
+  });
+
+  it("still notices a new sign-in copied over a renewed one", async () => {
+    const first = newSession();
+    const second = newSession();
+    await second.accessToken();
+    time += HOUR;
+    await first.accessToken();
+    await second.accessToken();
+
+    importCredential(dir, ACCOUNT, auth.credential(time));
+    await second.accessToken();
+    expect(signedIn).toBe(1);
+  });
+
+  it("takes over a lock left behind by a process that died", async () => {
+    const lock = `${file()}.lock`;
+    writeFileSync(lock, "");
+    const longAgo = new Date(Date.now() - 10 * 60_000);
+    utimesSync(lock, longAgo, longAgo);
+    const session = newSession();
+    time += HOUR;
+    expect(await session.accessToken()).toBe("access-1");
+    expect(existsSync(lock)).toBe(false);
+  });
+});
+
+describe("the file lock", () => {
+  const options = { staleMs: 60_000, waitMs: 2_000 };
+
+  it("lets one task run at a time", async () => {
+    const lock = join(dir, "test.lock");
+    let running = 0;
+    let most = 0;
+    const task = async () => {
+      running += 1;
+      most = Math.max(most, running);
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      running -= 1;
+    };
+    await Promise.all(Array.from({ length: 4 }, () => withFileLock(lock, options, task)));
+    expect(most).toBe(1);
+    expect(existsSync(lock)).toBe(false);
+  });
+
+  it("gives up when another process holds it for too long", async () => {
+    const lock = join(dir, "test.lock");
+    writeFileSync(lock, "");
+    await expect(
+      withFileLock(lock, { staleMs: 60_000, waitMs: 20 }, async () => "ran"),
+    ).rejects.toBeInstanceOf(FileLockBusyError);
+  });
+
+  it("is released when the task fails", async () => {
+    const lock = join(dir, "test.lock");
+    await expect(
+      withFileLock(lock, options, async () => {
+        throw new Error("failed");
+      }),
+    ).rejects.toThrow("failed");
+    expect(await withFileLock(lock, options, async () => "ran")).toBe("ran");
   });
 });
 

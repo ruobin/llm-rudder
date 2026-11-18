@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import {
@@ -12,6 +12,7 @@ import {
   type ChatGptEndpoints,
 } from "@llm-rudder/shared";
 import type { Classified } from "../types.js";
+import { FileLockBusyError, withFileLock } from "./file-lock.js";
 
 const REFRESH_BEFORE_EXPIRY_MS = 5 * 60_000;
 const EXPIRY_SAFETY_MS = 30_000;
@@ -78,7 +79,8 @@ function unseal(path: string, file: SealedFile, key: Buffer): string {
 
 export function writePrivateJson(path: string, value: unknown): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const temporary = `${path}.${process.pid}.tmp`;
+  // Containers can share this folder and still have the same process ID.
+  const temporary = `${path}.${randomUUID()}.tmp`;
   const text = JSON.stringify(value, null, 2);
   const key = stateKey();
   const content = key ? JSON.stringify(seal(path, text, key), null, 2) : text;
@@ -117,7 +119,8 @@ export function importCredential(
   const hostId = ensureHostId(stateDir);
   const parsed = parseChatGptCredential(value);
   if (!parsed?.refresh_token) throw new Error("That is not a usable ChatGPT sign-in.");
-  const credential = { ...parsed, ext_agent_host_id: hostId };
+  const credential: ChatGptCredential = { ...parsed, ext_agent_host_id: hostId };
+  delete credential.renewed;
   writePrivateJson(credentialPath(stateDir, accountId), credential);
   return credential;
 }
@@ -173,6 +176,8 @@ export interface ChatGptSessionOptions {
 }
 
 const NOT_READ = -1;
+/** Longer than a refresh can take, so only a dead process leaves a lock this old. */
+const REFRESH_LOCK = { staleMs: 2 * REQUEST_TIMEOUT_MS, waitMs: REQUEST_TIMEOUT_MS + 5_000 };
 
 /** Holds one ChatGPT sign-in on the VPS, which alone renews its tokens. */
 export class ChatGptSession {
@@ -205,13 +210,20 @@ export class ChatGptSession {
     const version = this.currentFileVersion();
     if (version === this.fileVersion) return;
     const firstRead = this.fileVersion === NOT_READ;
+    const previous = this.credential;
     this.fileVersion = version;
     this.credential = version === 0 ? null : readCredential(this.options.file);
+    const hasTokens = Boolean(this.credential?.refresh_token || this.credential?.access_token);
+    this.state = hasTokens ? "ok" : "signed_out";
+    // Another instance renewing the same sign-in changes nothing but the tokens.
+    const renewedElsewhere =
+      hasTokens &&
+      this.credential?.renewed === true &&
+      previous?.subject === this.credential.subject;
+    if (renewedElsewhere) return;
     this.models = null;
     this.listedModels = [];
     this.modelsAt = -Infinity;
-    const hasTokens = Boolean(this.credential?.refresh_token || this.credential?.access_token);
-    this.state = hasTokens ? "ok" : "signed_out";
     if (hasTokens && !firstRead) this.options.onSignedIn();
   }
 
@@ -279,10 +291,28 @@ export class ChatGptSession {
 
   /** Refresh tokens rotate, so only one refresh may ever be in flight. */
   private refresh(): Promise<string> {
-    this.refreshing ??= this.performRefresh().finally(() => {
+    this.refreshing ??= this.refreshOnce().finally(() => {
       this.refreshing = null;
     });
     return this.refreshing;
+  }
+
+  /** The lock also covers other gateway instances that share this sign-in file. */
+  private async refreshOnce(): Promise<string> {
+    const usedToken = this.credential?.refresh_token;
+    try {
+      return await withFileLock(`${this.options.file}.lock`, REFRESH_LOCK, async () => {
+        this.sync(true);
+        const latest = this.credential;
+        if (latest?.refresh_token !== usedToken && latest && this.isCurrent(latest)) {
+          return latest.access_token as string;
+        }
+        return this.performRefresh();
+      });
+    } catch (error) {
+      if (error instanceof FileLockBusyError) throw refreshUnavailable("refresh_busy");
+      throw error;
+    }
   }
 
   private requireSignIn(code: string, options: { keepTokens: boolean }): ChatGptError {
@@ -328,6 +358,7 @@ export class ChatGptSession {
     if (response.ok && typeof body.access_token === "string") {
       this.save({
         ...credential,
+        renewed: true,
         access_token: body.access_token,
         refresh_token: typeof body.refresh_token === "string" ? body.refresh_token : refreshToken,
         ...(typeof body.id_token === "string" ? { id_token: body.id_token } : {}),
