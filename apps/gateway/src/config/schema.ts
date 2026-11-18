@@ -15,6 +15,8 @@ const clientSchema = z.strictObject({
   max_concurrent: z.number().int().positive().default(32),
   allow_accounts: z.array(id).optional(),
   allow_fallback: z.boolean().default(true),
+  /** Allows this key to fetch the edge plan and report Claude plan state. */
+  edge: z.boolean().default(false),
 });
 
 const budgetSchema = z
@@ -44,6 +46,10 @@ const compatOverrides = z
 
 const accountSchema = z
   .strictObject({
+    /** edge_only accounts are used by llmr-edge and never called from the VPS. */
+    kind: z.enum(["http", "edge_only"]).default("http"),
+    api: z.enum(["openai.chat", "anthropic.messages"]).default("openai.chat"),
+    auth_header: z.enum(["bearer", "x-api-key"]).optional(),
     base_url: z.url().optional(),
     base_url_env: envName.optional(),
     api_key_env: envName.optional(),
@@ -54,9 +60,19 @@ const accountSchema = z
     enabled: z.boolean().default(true),
     budget: budgetSchema.optional(),
   })
-  .refine((a) => (a.base_url === undefined) !== (a.base_url_env === undefined), {
-    message: "set exactly one of base_url or base_url_env",
-  });
+  .refine(
+    (a) => a.kind === "edge_only" || (a.base_url === undefined) !== (a.base_url_env === undefined),
+    { message: "set exactly one of base_url or base_url_env" },
+  )
+  .refine(
+    (a) =>
+      a.kind === "http" ||
+      (a.base_url === undefined &&
+        a.base_url_env === undefined &&
+        a.api_key_env === undefined &&
+        a.budget === undefined),
+    { message: "an edge_only account has no URL, key or budget on the gateway" },
+  );
 
 const targetSchema = z.strictObject({
   account: id,
@@ -110,15 +126,33 @@ export const configSchema = z.strictObject({
       repeat_after_s: positiveSeconds.default(3600),
     })
     .prefault({}),
+  edge: z
+    .strictObject({
+      plan_account: id,
+      /** The plan model to try for each tier, such as frontier: claude-opus-5-5. */
+      plan_models: z.record(id, z.string().min(1)),
+      report_interval_s: positiveSeconds.default(300),
+    })
+    .optional(),
   pricing_file: z.string().default("pricing.yaml"),
 });
 
 export type RawConfig = z.infer<typeof configSchema>;
 
-const priceSchema = z.strictObject({
+const tokenPrices = {
   input: z.number().nonnegative(),
   output: z.number().nonnegative(),
   cached_input: z.number().nonnegative().optional(),
+  cache_write_5m: z.number().nonnegative().optional(),
+  cache_write_1h: z.number().nonnegative().optional(),
+};
+
+const priceSchema = z.strictObject({
+  ...tokenPrices,
+  /** Different prices for requests with more input tokens than this. */
+  long_context: z
+    .strictObject({ over_input_tokens: z.number().int().positive(), ...tokenPrices })
+    .optional(),
 });
 
 export const pricingSchema = z.strictObject({

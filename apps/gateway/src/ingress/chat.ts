@@ -1,21 +1,16 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { ClientConfig } from "../config/load.js";
 import { RouterError } from "../errors.js";
-import { ClientResponse } from "../execution/client-response.js";
+import { ClientResponse, OPENAI_ERRORS } from "../execution/client-response.js";
 import type { RequestContext } from "../execution/context.js";
-import { executeChat } from "../execution/executor.js";
+import { executeRequest } from "../execution/executor.js";
+import { openAiChat } from "../execution/protocols/openai-chat.js";
 import { ulid } from "../ids.js";
 import { buildPlan } from "../routing/plan.js";
 import type { Runtime } from "../runtime.js";
 import type { JsonObject } from "../types.js";
-import { authenticateClient, rejectLoop } from "./auth.js";
+import { clientAuthHook } from "./auth.js";
 import { deriveSessionKey } from "./session.js";
-
-declare module "fastify" {
-  interface FastifyRequest {
-    llmrClient: ClientConfig | null;
-  }
-}
 
 function invalidRequest(message: string, param: string): RouterError {
   return new RouterError(400, "invalid_request", message, "invalid_request_error", {}, param);
@@ -53,6 +48,7 @@ function buildContext(
   return {
     requestId: ulid(startedAt),
     client,
+    dialect: "openai.chat",
     body,
     requestedModel: body.model,
     stream,
@@ -69,13 +65,7 @@ function buildContext(
 }
 
 export function registerChatRoutes(app: FastifyInstance, runtime: Runtime): void {
-  app.decorateRequest("llmrClient", null);
-
-  // Runs before the body is read, so unauthenticated uploads are refused early.
-  const authenticate = async (request: FastifyRequest) => {
-    rejectLoop(request, runtime);
-    request.llmrClient = authenticateClient(request, runtime);
-  };
+  const authenticate = clientAuthHook(runtime);
 
   app.post("/v1/chat/completions", { onRequest: authenticate }, async (request, reply) => {
     const client = request.llmrClient as ClientConfig;
@@ -90,7 +80,8 @@ export function registerChatRoutes(app: FastifyInstance, runtime: Runtime): void
     try {
       const ctx = buildContext(request, client, controller.signal, runtime);
       const plan = buildPlan(ctx, runtime);
-      await executeChat(runtime, ctx, plan, new ClientResponse(reply, runtime.now));
+      const out = new ClientResponse(reply, runtime.now, OPENAI_ERRORS);
+      await executeRequest(runtime, ctx, plan, out, openAiChat);
     } finally {
       reply.raw.off("close", onClose);
       release();

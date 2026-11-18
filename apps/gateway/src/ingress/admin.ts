@@ -42,6 +42,8 @@ export function buildStatus(runtime: Runtime) {
         id: account.id,
         costClass: account.costClass,
         trust: account.trust,
+        kind: account.kind,
+        api: account.api,
         compat: account.compatName,
         enabled: account.enabled,
         state:
@@ -61,6 +63,12 @@ export function buildStatus(runtime: Runtime) {
         },
       };
     }),
+    edges: [...runtime.edgeReports].map(([client, report]) => ({
+      client,
+      at: iso(report.at),
+      edgeVersion: report.edgeVersion,
+      usage: report.usage,
+    })),
     recentEvents: notifier.recent().map((event) => ({ ...event, at: iso(event.at) })),
   };
 }

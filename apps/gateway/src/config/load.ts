@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { globToRegExp } from "@llm-router/shared";
 import { parse as parseYaml } from "yaml";
 import type { z } from "zod";
 import { hashKey } from "../auth/keys.js";
-import type { CostClass, JsonObject, NoticeMode, Target, Trust } from "../types.js";
+import type { CostClass, Dialect, JsonObject, NoticeMode, Target, Trust } from "../types.js";
 import { COMPAT_PROFILES, type CompatProfile } from "./compat.js";
 import { configSchema, pricingSchema, type RawConfig } from "./schema.js";
 
@@ -15,10 +16,14 @@ export interface ClientConfig {
   maxConcurrent: number;
   allowAccounts?: Set<string>;
   allowFallback: boolean;
+  edge: boolean;
 }
 
 export interface AccountConfig {
   id: string;
+  kind: "http" | "edge_only";
+  api: Dialect;
+  authHeader: "bearer" | "x-api-key";
   baseUrl: string;
   apiKey: string | null;
   compatName: string;
@@ -38,10 +43,16 @@ export interface TierConfig {
   targets: Target[];
 }
 
-export interface Price {
+export interface TokenPrices {
   input: number;
   output: number;
   cachedInput?: number;
+  cacheWrite5m?: number;
+  cacheWrite1h?: number;
+}
+
+export interface Price extends TokenPrices {
+  longContext?: TokenPrices & { overInputTokens: number };
 }
 
 export interface Pricing {
@@ -56,7 +67,7 @@ export interface Config {
   clients: ClientConfig[];
   accounts: Map<string, AccountConfig>;
   tiers: Map<string, TierConfig>;
-  aliases: { pattern: RegExp; tier: string }[];
+  aliases: { match: string; pattern: RegExp; tier: string }[];
   routing: { maxAttemptsPerTier: number; deadlineMs: number };
   timeouts: {
     connectMs: number;
@@ -67,6 +78,7 @@ export interface Config {
     keepaliveIntervalMs: number;
   };
   notifications: { ntfyUrl?: string; webhookUrl?: string; repeatAfterMs: number };
+  edge?: { planAccount: string; planModels: Map<string, string>; reportIntervalS: number };
   pricing: Pricing;
 }
 
@@ -100,24 +112,48 @@ function findInlineSecrets(value: unknown, path: string, found: string[]): void 
   }
 }
 
-export function globToRegExp(glob: string): RegExp {
-  const escaped = glob.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-  return new RegExp(`^${escaped}$`);
-}
-
 function formatZodError(error: z.ZodError): string[] {
   return error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`);
 }
+
+type RawLongContext = {
+  over_input_tokens: number;
+  input: number;
+  output: number;
+  cached_input?: number | undefined;
+  cache_write_5m?: number | undefined;
+  cache_write_1h?: number | undefined;
+};
 
 export function parsePricing(text: string): Pricing {
   const result = pricingSchema.safeParse(parseYaml(text));
   if (!result.success) {
     throw new ConfigError(formatZodError(result.error).map((p) => `pricing: ${p}`));
   }
-  const convert = (p: { input: number; output: number; cached_input?: number }): Price => ({
+  type RawPrices = {
+    input: number;
+    output: number;
+    cached_input?: number | undefined;
+    cache_write_5m?: number | undefined;
+    cache_write_1h?: number | undefined;
+  };
+  const prices = (p: RawPrices): TokenPrices => ({
     input: p.input,
     output: p.output,
     ...(p.cached_input === undefined ? {} : { cachedInput: p.cached_input }),
+    ...(p.cache_write_5m === undefined ? {} : { cacheWrite5m: p.cache_write_5m }),
+    ...(p.cache_write_1h === undefined ? {} : { cacheWrite1h: p.cache_write_1h }),
+  });
+  const convert = (p: RawPrices & { long_context?: RawLongContext | undefined }): Price => ({
+    ...prices(p),
+    ...(p.long_context
+      ? {
+          longContext: {
+            ...prices(p.long_context),
+            overInputTokens: p.long_context.over_input_tokens,
+          },
+        }
+      : {}),
   });
   return {
     version: result.data.version,
@@ -168,6 +204,7 @@ export function buildConfig(
       notice: client.notice,
       maxConcurrent: client.max_concurrent,
       allowFallback: client.allow_fallback,
+      edge: client.edge,
       ...(client.rpm === undefined ? {} : { rpm: client.rpm }),
       ...(client.allow_accounts === undefined
         ? {}
@@ -178,10 +215,14 @@ export function buildConfig(
   const accounts = new Map<string, AccountConfig>();
   for (const [accountId, account] of Object.entries(raw.accounts)) {
     const where = `accounts.${accountId}`;
-    const baseUrl = (account.base_url ?? requireEnv(account.base_url_env as string, where)).replace(
-      /\/+$/,
-      "",
-    );
+    const configuredUrl =
+      account.kind === "edge_only"
+        ? ""
+        : (account.base_url ?? requireEnv(account.base_url_env as string, where));
+    const trimmedUrl = configuredUrl.replace(/\/+$/, "");
+    // The Anthropic client adds /v1/messages itself.
+    const baseUrl =
+      account.api === "anthropic.messages" ? trimmedUrl.replace(/\/v1$/, "") : trimmedUrl;
     if (baseUrl && !/^https?:\/\//.test(baseUrl)) {
       problems.push(`${where}: base URL must start with http:// or https://`);
     }
@@ -192,6 +233,10 @@ export function buildConfig(
     }
     accounts.set(accountId, {
       id: accountId,
+      kind: account.kind,
+      api: account.api,
+      authHeader:
+        account.auth_header ?? (account.api === "anthropic.messages" ? "x-api-key" : "bearer"),
       baseUrl,
       apiKey: account.api_key_env ? requireEnv(account.api_key_env, where) : null,
       compatName: account.compat,
@@ -224,8 +269,14 @@ export function buildConfig(
     const seen = new Set<string>();
     const targets: Target[] = [];
     tier.targets.forEach((target, index) => {
-      if (!accounts.has(target.account)) {
-        problems.push(`tiers.${tierName}.targets[${index}]: unknown account ${target.account}`);
+      const where = `tiers.${tierName}.targets[${index}]`;
+      const account = accounts.get(target.account);
+      if (!account) {
+        problems.push(`${where}: unknown account ${target.account}`);
+      } else if (account.kind === "edge_only") {
+        problems.push(`${where}: ${target.account} is only usable by llmr-edge`);
+      } else if (account.api === "anthropic.messages" && Object.keys(target.params).length > 0) {
+        problems.push(`${where}: params are not supported, because the body is passed through`);
       }
       const targetId = `${tierName}/${target.account}/${target.model}`;
       if (seen.has(targetId)) problems.push(`tiers.${tierName}: duplicate target ${targetId}`);
@@ -273,8 +324,24 @@ export function buildConfig(
 
   const aliases = raw.aliases.map((alias) => {
     if (!tiers.has(alias.tier)) problems.push(`aliases: unknown tier ${alias.tier}`);
-    return { pattern: globToRegExp(alias.match), tier: alias.tier };
+    return { match: alias.match, pattern: globToRegExp(alias.match), tier: alias.tier };
   });
+
+  if (raw.edge) {
+    if (accounts.get(raw.edge.plan_account)?.kind !== "edge_only") {
+      problems.push(`edge.plan_account: ${raw.edge.plan_account} must be an edge_only account`);
+    }
+    for (const tier of Object.keys(raw.edge.plan_models)) {
+      if (!tiers.has(tier)) problems.push(`edge.plan_models: unknown tier ${tier}`);
+    }
+    if (!clients.some((client) => client.edge)) {
+      warnings.push("edge: no client has edge: true, so llmr-edge cannot connect");
+    }
+  } else {
+    for (const client of clients) {
+      if (client.edge) problems.push(`clients.${client.id}: edge requires an edge section`);
+    }
+  }
 
   if (problems.length > 0) throw new ConfigError(problems);
 
@@ -317,6 +384,15 @@ export function buildConfig(
         ...(ntfyUrl ? { ntfyUrl } : {}),
         ...(webhookUrl ? { webhookUrl } : {}),
       },
+      ...(raw.edge
+        ? {
+            edge: {
+              planAccount: raw.edge.plan_account,
+              planModels: new Map(Object.entries(raw.edge.plan_models)),
+              reportIntervalS: raw.edge.report_interval_s,
+            },
+          }
+        : {}),
       pricing,
     },
   };

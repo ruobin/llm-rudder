@@ -217,6 +217,44 @@ export class QuotaManager {
     }
   }
 
+  /**
+   * Replaces an account's limits with what an outside observer reports. Used for
+   * the Claude plan, which only the local edge can see.
+   */
+  applyReportedLimits(
+    accountId: string,
+    limits: { scope: string; retryAt?: number; detail?: string }[],
+  ): void {
+    const wanted = new Set(limits.map((limit) => limit.scope));
+    let removed = false;
+    for (const entry of [...this.states.values()]) {
+      if (entry.accountId === accountId && !wanted.has(entry.scope)) {
+        this.remove(accountId, entry.scope);
+        removed = true;
+      }
+    }
+    let added = false;
+    for (const { scope, retryAt, detail } of limits) {
+      const previous = this.read(accountId, scope);
+      if (!previous) added = true;
+      this.write(accountId, scope, {
+        status: "exhausted",
+        ...(retryAt === undefined ? {} : { retryAt }),
+        ...(detail === undefined ? {} : { detail }),
+      });
+    }
+    if (added) {
+      const retryAt = limits.map((limit) => limit.retryAt).find((value) => value !== undefined);
+      this.onChange?.({
+        kind: "exhausted",
+        accountId,
+        ...(retryAt === undefined ? {} : { retryAt }),
+      });
+    } else if (removed && limits.length === 0) {
+      this.onChange?.({ kind: "recovered", accountId });
+    }
+  }
+
   /** Clears every state for an account, after you have fixed the problem. */
   reset(accountId: string): number {
     let cleared = 0;

@@ -4,7 +4,7 @@ import { BudgetManager } from "../src/billing/budgets.js";
 import { costMicroUsd } from "../src/billing/pricing.js";
 import { COMPAT_PROFILES } from "../src/config/compat.js";
 import { ConfigError, parseConfig, type AccountConfig } from "../src/config/load.js";
-import { chunkHasOutput } from "../src/execution/executor.js";
+import { chunkHasOutput } from "../src/execution/protocols/openai-chat.js";
 import { canAddNotice, reasonLabel } from "../src/execution/notice.js";
 import { ulid } from "../src/ids.js";
 import { deriveSessionKey } from "../src/ingress/session.js";

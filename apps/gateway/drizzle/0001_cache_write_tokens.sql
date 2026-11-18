@@ -1,0 +1,1 @@
+ALTER TABLE `attempts` ADD `cache_write_tokens` int;

@@ -9,10 +9,17 @@ export function priceFor(pricing: Pricing, model: string): Price {
 
 /** A price in USD per million tokens is the same number in micro-USD per token. */
 export function costMicroUsd(usage: Usage, price: Price): number {
+  const write5m = usage.cacheWrite5mTokens ?? 0;
+  const write1h = usage.cacheWrite1hTokens ?? 0;
+  const totalInput = usage.inputTokens + usage.cachedTokens + write5m + write1h;
+  const rates =
+    price.longContext && totalInput > price.longContext.overInputTokens ? price.longContext : price;
   return Math.ceil(
-    usage.inputTokens * price.input +
-      usage.cachedTokens * (price.cachedInput ?? price.input) +
-      usage.outputTokens * price.output,
+    usage.inputTokens * rates.input +
+      usage.cachedTokens * (rates.cachedInput ?? rates.input) +
+      write5m * (rates.cacheWrite5m ?? rates.input) +
+      write1h * (rates.cacheWrite1h ?? rates.input) +
+      usage.outputTokens * rates.output,
   );
 }
 

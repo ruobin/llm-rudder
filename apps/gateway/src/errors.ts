@@ -13,6 +13,28 @@ export class RouterError extends Error {
   }
 }
 
+const ANTHROPIC_ERROR_TYPES: Record<number, string> = {
+  400: "invalid_request_error",
+  401: "authentication_error",
+  402: "billing_error",
+  403: "permission_error",
+  404: "not_found_error",
+  413: "request_too_large",
+  429: "rate_limit_error",
+  504: "timeout_error",
+  529: "overloaded_error",
+};
+
+export function anthropicErrorBody(status: number, message: string, requestId?: string) {
+  const type =
+    ANTHROPIC_ERROR_TYPES[status] ?? (status >= 500 ? "api_error" : "invalid_request_error");
+  return {
+    type: "error",
+    error: { type, message },
+    ...(requestId === undefined ? {} : { request_id: requestId }),
+  };
+}
+
 export function errorBody(
   message: string,
   type: string,

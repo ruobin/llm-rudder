@@ -12,6 +12,9 @@ export type FakeStep =
       firstDelayMs?: number;
       /** "drop" closes the connection after the events, with no finish. */
       end?: "clean" | "drop";
+      headers?: Record<string, string>;
+      /** Stops after this many events until the promise resolves. */
+      pause?: { afterEvents: number; until: Promise<unknown> };
     }
   | { type: "hang" };
 
@@ -19,6 +22,7 @@ export interface RecordedRequest {
   path: string;
   headers: IncomingMessage["headers"];
   body: JsonObject;
+  rawBody: Buffer;
 }
 
 const usage = { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 };
@@ -79,9 +83,103 @@ export function errorStep(
   return { type: "json", status, body: { error: { code, message, type } } };
 }
 
-/** A small scriptable OpenAI-compatible server. */
+const anthropicEvent = (type: string, data: JsonObject = {}) =>
+  `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}`;
+
+export const ANTHROPIC_USAGE = {
+  input_tokens: 100,
+  cache_creation_input_tokens: 40,
+  cache_read_input_tokens: 500,
+  output_tokens: 20,
+};
+
+export function anthropicMessageBody(model: string, text: string): JsonObject {
+  return {
+    id: "msg_fake",
+    type: "message",
+    role: "assistant",
+    model,
+    content: [{ type: "text", text }],
+    stop_reason: "end_turn",
+    stop_sequence: null,
+    usage: ANTHROPIC_USAGE,
+  };
+}
+
+/** The events that come before any model output. */
+export function anthropicStreamStart(model: string): string[] {
+  return [
+    anthropicEvent("message_start", {
+      message: {
+        id: "msg_fake",
+        type: "message",
+        role: "assistant",
+        model,
+        content: [],
+        stop_reason: null,
+        stop_sequence: null,
+        usage: { ...ANTHROPIC_USAGE, output_tokens: 1 },
+      },
+    }),
+    anthropicEvent("ping"),
+  ];
+}
+
+export function anthropicTextEvents(text: string): string[] {
+  return [
+    anthropicEvent("content_block_start", {
+      index: 0,
+      content_block: { type: "text", text: "" },
+    }),
+    ...text.split(/(?<= )/).map((word) =>
+      anthropicEvent("content_block_delta", {
+        index: 0,
+        delta: { type: "text_delta", text: word },
+      }),
+    ),
+    anthropicEvent("content_block_stop", { index: 0 }),
+  ];
+}
+
+export function anthropicStreamEnd(): string[] {
+  return [
+    anthropicEvent("message_delta", {
+      delta: { stop_reason: "end_turn", stop_sequence: null },
+      usage: { output_tokens: ANTHROPIC_USAGE.output_tokens },
+    }),
+    anthropicEvent("message_stop"),
+  ];
+}
+
+export function anthropicTextStream(model: string, text: string): FakeStep {
+  return {
+    type: "stream",
+    events: [...anthropicStreamStart(model), ...anthropicTextEvents(text), ...anthropicStreamEnd()],
+  };
+}
+
+export const anthropicErrorEvent = (type: string, message: string) =>
+  anthropicEvent("error", { error: { type, message } });
+
+export function anthropicErrorStep(
+  status: number,
+  type: string,
+  message: string,
+  headers: Record<string, string> = {},
+): FakeStep {
+  return {
+    type: "json",
+    status,
+    headers,
+    body: { type: "error", error: { type, message }, request_id: "req_fake" },
+  };
+}
+
+/** A small scriptable server that speaks the OpenAI and Anthropic formats. */
 export class FakeUpstream {
   readonly requests: RecordedRequest[] = [];
+  /** Responses whose connection closed before they finished. */
+  abandoned = 0;
   private readonly scripts = new Map<string, FakeStep[]>();
   private readonly always = new Map<string, FakeStep>();
   private readonly sockets = new Set<Socket>();
@@ -128,19 +226,38 @@ export class FakeUpstream {
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    res.once("close", () => {
+      if (!res.writableFinished) this.abandoned += 1;
+    });
     const parts: Buffer[] = [];
     for await (const part of req) parts.push(part as Buffer);
-    const body = JSON.parse(Buffer.concat(parts).toString() || "{}") as JsonObject;
-    this.requests.push({ path: req.url ?? "", headers: req.headers, body });
+    const rawBody = Buffer.concat(parts);
+    let body: JsonObject = {};
+    try {
+      body = JSON.parse(rawBody.toString() || "{}") as JsonObject;
+    } catch {
+      // Some tests send bodies that are not JSON.
+    }
+    const path = req.url ?? "";
+    this.requests.push({ path, headers: req.headers, body, rawBody });
 
     const model = String(body.model);
-    const step =
-      this.scripts.get(model)?.shift() ??
-      this.always.get(model) ??
-      (body.stream === true
-        ? textStream(model, `Hello from ${model}`)
-        : ({ type: "json", body: completionBody(model, `Hello from ${model}`) } as FakeStep));
-    await this.play(step, res);
+    const scripted = this.scripts.get(model)?.shift() ?? this.always.get(model);
+    await this.play(scripted ?? this.defaultStep(path, model, body.stream === true), res);
+  }
+
+  private defaultStep(path: string, model: string, stream: boolean): FakeStep {
+    const route = path.split("?")[0];
+    const text = `Hello from ${model}`;
+    if (route === "/v1/messages/count_tokens") {
+      return { type: "json", body: { input_tokens: 123 } };
+    }
+    if (route === "/v1/messages") {
+      return stream
+        ? anthropicTextStream(model, text)
+        : { type: "json", body: anthropicMessageBody(model, text) };
+    }
+    return stream ? textStream(model, text) : { type: "json", body: completionBody(model, text) };
   }
 
   private async play(step: FakeStep, res: ServerResponse): Promise<void> {
@@ -160,10 +277,11 @@ export class FakeUpstream {
       case "hang":
         return;
       case "stream": {
-        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.writeHead(200, { "content-type": "text/event-stream", ...step.headers });
         res.flushHeaders();
         if (step.firstDelayMs) await pause(step.firstDelayMs);
-        for (const event of step.events) {
+        for (const [index, event] of step.events.entries()) {
+          if (step.pause?.afterEvents === index) await step.pause.until;
           if (res.destroyed) return;
           res.write(`${event}\n\n`);
           if (step.delayMs) await pause(step.delayMs);

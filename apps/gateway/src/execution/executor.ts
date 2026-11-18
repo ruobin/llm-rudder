@@ -1,33 +1,28 @@
-import { costMicroUsd, estimateUsage, priceFor } from "../billing/pricing.js";
 import { dayPeriod } from "../billing/budgets.js";
+import { costMicroUsd, estimateUsage, priceFor } from "../billing/pricing.js";
 import type { AccountConfig } from "../config/load.js";
 import type { AttemptRecord } from "../ledger/records.js";
 import type { Plan, PlanStep } from "../routing/plan.js";
 import { estimateCost } from "../routing/plan.js";
 import type { Runtime } from "../runtime.js";
-import type { Classified, JsonObject, Outcome, Usage } from "../types.js";
-import {
-  classifyEmbeddedError,
-  classifyHttpError,
-  classifyTransportError,
-} from "../upstream/classify.js";
-import { buildUpstreamBody } from "../upstream/request.js";
+import type { Classified, Outcome, Usage } from "../types.js";
+import { classifyTransportError, type HeaderBag } from "../upstream/classify.js";
 import { SseDecoder, type SseEvent } from "../upstream/sse.js";
-import { StreamToolExtras } from "../upstream/tool-extras.js";
-import { parseUsage } from "../upstream/usage.js";
 import type { ClientResponse } from "./client-response.js";
 import type { RequestContext } from "./context.js";
-import {
-  addNoticeToMessage,
-  canAddNotice,
-  noticeChunk,
-  noticeText,
-  reasonLabel,
-} from "./notice.js";
+import { canAddNotice, noticeText, reasonLabel } from "./notice.js";
+import { isClassified, type Attempt, type WireProtocol } from "./protocol.js";
 
 const OK: Classified = { outcome: "ok", retryElsewhere: false };
 const MAX_ERROR_BODY_BYTES = 64 * 1024;
-const REASONING_FIELDS = ["reasoning_content", "reasoning", "reasoning_text", "refusal"];
+/** Plan entries that say nothing about whether a target has capacity. */
+const NOT_CAPACITY_REASONS = new Set(["not_allowed", "disabled", "wrong_api"]);
+
+interface UpstreamFailure {
+  status: number;
+  headers: HeaderBag;
+  text: string;
+}
 
 interface AttemptResult {
   /** Output reached the client, so no other target may be tried. */
@@ -36,6 +31,7 @@ interface AttemptResult {
   /** The failure that should update quota state, when it differs. */
   stateUpdate?: Classified;
   httpStatus: number | null;
+  failure?: UpstreamFailure;
   usage: Usage | null;
   returnedModel: string | null;
   ttftMs: number | null;
@@ -47,48 +43,6 @@ class AbortReason extends Error {
     super(kind);
   }
 }
-
-function asObject(value: unknown): JsonObject | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as JsonObject)
-    : null;
-}
-
-function firstChoice(chunk: JsonObject): JsonObject | null {
-  return Array.isArray(chunk.choices) ? asObject(chunk.choices[0]) : null;
-}
-
-const isNonEmpty = (value: unknown) =>
-  (typeof value === "string" && value.length > 0) || (Array.isArray(value) && value.length > 0);
-
-/** The commit point: the first chunk that carries model output or a finish. */
-export function chunkHasOutput(chunk: JsonObject): boolean {
-  const choice = firstChoice(chunk);
-  if (!choice) return false;
-  if (choice.finish_reason) return true;
-  const delta = asObject(choice.delta);
-  if (!delta) return false;
-  return (
-    isNonEmpty(delta.content) ||
-    isNonEmpty(delta.tool_calls) ||
-    delta.function_call !== undefined ||
-    REASONING_FIELDS.some((field) => isNonEmpty(delta[field]))
-  );
-}
-
-function deltaChars(chunk: JsonObject): number {
-  const delta = asObject(firstChoice(chunk)?.delta);
-  if (!delta) return 0;
-  let total = typeof delta.content === "string" ? delta.content.length : 0;
-  if (Array.isArray(delta.tool_calls)) total += JSON.stringify(delta.tool_calls).length;
-  return total;
-}
-
-const isUsageOnly = (chunk: JsonObject) =>
-  chunk.usage !== undefined &&
-  chunk.usage !== null &&
-  Array.isArray(chunk.choices) &&
-  chunk.choices.length === 0;
 
 async function readLimited(body: AsyncIterable<Uint8Array>): Promise<string> {
   const parts: Uint8Array[] = [];
@@ -105,47 +59,17 @@ function headerString(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
 }
 
-/** Turns a complete response into the events of an equivalent stream. */
-function responseToEvents(response: JsonObject): SseEvent[] {
-  const choice = firstChoice(response) ?? {};
-  const message = asObject(choice.message) ?? {};
-  const toolCalls = Array.isArray(message.tool_calls)
-    ? (message.tool_calls as JsonObject[]).map((call, index) => ({ index, ...call }))
-    : undefined;
-  const chunk = {
-    id: response.id,
-    object: "chat.completion.chunk",
-    created: response.created,
-    model: response.model,
-    choices: [
-      {
-        index: 0,
-        delta: {
-          role: "assistant",
-          ...(message.content === undefined || message.content === null
-            ? {}
-            : { content: message.content }),
-          ...(toolCalls ? { tool_calls: toolCalls } : {}),
-        },
-        finish_reason: choice.finish_reason ?? "stop",
-      },
-    ],
-    ...(response.usage ? { usage: response.usage } : {}),
-  };
-  const data = JSON.stringify(chunk);
-  return [{ raw: `data: ${data}`, data, event: null, isComment: false }];
-}
-
-export async function executeChat(
+export async function executeRequest(
   runtime: Runtime,
   ctx: RequestContext,
   plan: Plan,
   out: ClientResponse,
+  protocol: WireProtocol,
 ): Promise<void> {
-  await new ChatRun(runtime, ctx, plan, out).run();
+  await new RequestRun(runtime, ctx, plan, out, protocol).run();
 }
 
-class ChatRun {
+class RequestRun {
   private readonly attempts: AttemptRecord[] = [];
   private readonly reasons: string[];
   private servedStep: PlanStep | null = null;
@@ -157,10 +81,14 @@ class ChatRun {
     private readonly ctx: RequestContext,
     private readonly plan: Plan,
     private readonly out: ClientResponse,
+    private readonly protocol: WireProtocol,
   ) {
-    this.reasons = plan.skipped
-      .filter((entry) => entry.reason !== "not_allowed" && entry.reason !== "disabled")
-      .map((entry) => `${entry.target.accountId}:${entry.reason}`);
+    this.reasons = [
+      ...(ctx.priorFailures ?? []),
+      ...plan.skipped
+        .filter((entry) => !NOT_CAPACITY_REASONS.has(entry.reason))
+        .map((entry) => `${entry.target.accountId}:${entry.reason}`),
+    ];
   }
 
   private reasonList(): string {
@@ -207,22 +135,16 @@ class ChatRun {
       }
 
       const startedAt = rt.now();
-      const body = buildUpstreamBody(
-        ctx.body,
-        target,
-        account,
-        ctx.stream,
-        ctx.client.id,
-        rt.toolExtras,
-      );
+      const attempt: Attempt = { rt, ctx, target, account };
       const result = ctx.stream
-        ? await this.streamAttempt(step, account, body, startedAt)
-        : await this.jsonAttempt(step, account, body, startedAt);
+        ? await this.streamAttempt(step, attempt, startedAt)
+        : await this.jsonAttempt(step, attempt, startedAt);
 
       const costs = this.costs(step, account, result);
       if (result.delivered) rt.budgets.settle(hold, costs.chargeMicroUsd);
       else rt.budgets.release(hold);
 
+      const usage = costs.usage;
       this.attempts.push({
         requestId: ctx.requestId,
         n: this.attempts.length + 1,
@@ -236,9 +158,12 @@ class ChatRun {
         httpStatus: result.httpStatus,
         outcome: result.classified.outcome,
         errorCode: result.classified.code ?? null,
-        inputTokens: costs.usage?.inputTokens ?? null,
-        cachedTokens: costs.usage?.cachedTokens ?? null,
-        outputTokens: costs.usage?.outputTokens ?? null,
+        inputTokens: usage?.inputTokens ?? null,
+        cachedTokens: usage?.cachedTokens ?? null,
+        cacheWriteTokens: usage
+          ? (usage.cacheWrite5mTokens ?? 0) + (usage.cacheWrite1hTokens ?? 0)
+          : null,
+        outputTokens: usage?.outputTokens ?? null,
         usageComplete: result.usage !== null,
         costMicroUsd: costs.recordedCost,
         listMicroUsd: costs.listMicroUsd,
@@ -265,7 +190,7 @@ class ChatRun {
       this.finalStatus = result.httpStatus;
       if (outcome === "client_aborted") return;
       if (!result.classified.retryElsewhere) {
-        await this.sendClientError(result.classified, result.httpStatus);
+        await this.sendClientError(result);
         return;
       }
       this.reasons.push(`${target.accountId}:${outcome}`);
@@ -305,7 +230,7 @@ class ChatRun {
 
   /** Runs once, when a target is about to deliver output. Returns a note if one is due. */
   private onServed(step: PlanStep): string | null {
-    const { rt, ctx, plan, out } = this;
+    const { rt, ctx, plan, out, protocol } = this;
     const { target } = step;
     out.setHeaders({
       "x-llmr-request-id": ctx.requestId,
@@ -327,6 +252,7 @@ class ChatRun {
     const reason = reasonLabel(this.reasons);
     rt.episodes.onFallback(plan.requestedTier, target.tier, reason);
     if (
+      protocol.supportsNotice &&
       canAddNotice(ctx) &&
       rt.episodes.takeNotice(plan.requestedTier, ctx.client.id, ctx.sessionKey)
     ) {
@@ -373,11 +299,10 @@ class ChatRun {
 
   private async jsonAttempt(
     step: PlanStep,
-    account: AccountConfig,
-    body: JsonObject,
+    attempt: Attempt,
     startedAt: number,
   ): Promise<AttemptResult> {
-    const { rt, ctx, out } = this;
+    const { rt, ctx, out, protocol } = this;
     const result = this.newResult();
     const controller = new AbortController();
     const unlink = this.linkAbort(controller);
@@ -386,47 +311,33 @@ class ChatRun {
       Math.max(1, ctx.deadlineAt - rt.now()),
     );
     try {
-      const response = await rt.upstream.sendChat(account, body, {
-        stream: false,
-        signal: controller.signal,
-      });
+      const response = await protocol.send(attempt, { stream: false, signal: controller.signal });
       result.httpStatus = response.status;
       const text = await response.body.text();
       if (response.status >= 400) {
-        result.classified = classifyHttpError(response.status, response.headers, text, rt.now());
+        result.classified = protocol.classifyHttpError(
+          response.status,
+          response.headers,
+          text,
+          rt.now(),
+        );
+        result.failure = { status: response.status, headers: response.headers, text };
         return result;
       }
-      let parsed: JsonObject | null = null;
-      try {
-        parsed = asObject(JSON.parse(text));
-      } catch {
-        parsed = null;
-      }
-      if (parsed?.error && !parsed.choices) {
-        result.classified = classifyEmbeddedError(parsed, rt.now());
-        return result;
-      }
-      if (!parsed || !Array.isArray(parsed.choices) || parsed.choices.length === 0) {
-        result.classified = {
-          outcome: "upstream_error",
-          retryElsewhere: true,
-          scope: "model",
-          code: "invalid_response",
-          message: "The upstream response had no choices.",
-        };
+      const reply = protocol.readComplete(attempt, text, rt.now());
+      if (isClassified(reply)) {
+        result.classified = reply;
         return result;
       }
 
       result.ttftMs = rt.now() - startedAt;
-      result.returnedModel = typeof parsed.model === "string" ? parsed.model : null;
-      result.usage = parseUsage(parsed.usage);
-      const message = firstChoice(parsed)?.message;
-      if (account.compat.toolExtras) rt.toolExtras.captureMessage(ctx.client.id, message);
-      result.outputChars = JSON.stringify(message ?? "").length;
+      result.returnedModel = reply.returnedModel;
+      result.usage = reply.usage;
+      result.outputChars = reply.outputChars;
 
+      out.setHeaders(protocol.successHeaders(response.headers));
       const notice = this.onServed(step);
-      if (notice) addNoticeToMessage(parsed, notice);
-      await out.sendJson(200, notice ? JSON.stringify(parsed) : text);
+      await out.sendJson(200, reply.render(notice));
       result.delivered = true;
       result.classified = OK;
       return result;
@@ -441,11 +352,10 @@ class ChatRun {
 
   private async streamAttempt(
     step: PlanStep,
-    account: AccountConfig,
-    body: JsonObject,
+    attempt: Attempt,
     startedAt: number,
   ): Promise<AttemptResult> {
-    const { rt, ctx, out } = this;
+    const { rt, ctx, out, protocol } = this;
     const { commitMs, streamIdleMs } = rt.config.timeouts;
     const result = this.newResult();
     const controller = new AbortController();
@@ -460,15 +370,19 @@ class ChatRun {
     if (untilDeadline < commitMs) arm(untilDeadline, "deadline");
     else arm(commitMs, "commit_timeout");
 
-    const extras = account.compat.toolExtras
-      ? new StreamToolExtras(rt.toolExtras, ctx.client.id)
-      : null;
-    const held: { event: SseEvent; chunk: JsonObject }[] = [];
+    const reader = protocol.newStreamReader(attempt);
+    const held: string[] = [];
     let committed = false;
-    let sawDone = false;
-    let sawFinish = false;
+    let upstreamHeaders: HeaderBag = {};
+
+    const syncReader = () => {
+      result.usage = reader.usage;
+      result.returnedModel = reader.returnedModel;
+      result.outputChars = reader.outputChars;
+    };
 
     const failMidStream = async (cause: Classified) => {
+      syncReader();
       result.delivered = true;
       result.classified = {
         ...cause,
@@ -478,114 +392,86 @@ class ChatRun {
       };
       result.stateUpdate = cause.retryElsewhere ? cause : result.classified;
       await out.sendError(
-        502,
+        cause.outcome === "overloaded" ? 529 : 502,
         "The upstream failed after output had started. Retry the request.",
         "upstream_error",
         "stream_interrupted",
       );
     };
 
-    const commit = async (chunk: JsonObject): Promise<boolean> => {
+    const commit = async (): Promise<boolean> => {
       committed = true;
       result.ttftMs = rt.now() - startedAt;
       arm(streamIdleMs, "idle_timeout");
       out.cancelDelayedStart();
+      out.setHeaders(protocol.successHeaders(upstreamHeaders));
       const notice = this.onServed(step);
       out.startStream();
-      for (const entry of held) {
-        if (isUsageOnly(entry.chunk) && !ctx.wantsUsage) continue;
-        if (!(await out.write(`${entry.event.raw}\n\n`))) return false;
+      for (const raw of held) {
+        if (!(await out.write(`${raw}\n\n`))) return false;
       }
-      const heldRole = held.some((entry) => asObject(firstChoice(entry.chunk)?.delta)?.role);
-      if (notice && !(await out.write(noticeChunk(chunk, notice, !heldRole)))) return false;
-      return true;
+      const noticeEvent = notice ? reader.noticeEvent(notice) : null;
+      return noticeEvent === null || out.write(noticeEvent);
     };
 
     /** Handles one event. Returns false when the attempt should stop reading. */
     const handleEvent = async (event: SseEvent): Promise<boolean> => {
-      if (event.data === null) return true;
-      if (event.data.trim() === "[DONE]") {
-        sawDone = true;
-        return false;
-      }
-      let chunk: JsonObject | null;
-      try {
-        chunk = asObject(JSON.parse(event.data));
-      } catch {
-        chunk = null;
-      }
-      if (!chunk) return true;
-
-      if (chunk.error) {
-        const cause = classifyEmbeddedError(chunk, rt.now());
-        if (committed) await failMidStream(cause);
-        else result.classified = cause;
-        return false;
-      }
-
-      if (typeof chunk.model === "string") result.returnedModel ??= chunk.model;
-      result.usage = parseUsage(chunk.usage) ?? result.usage;
-      const choice = firstChoice(chunk);
-      extras?.capture(choice?.delta);
-      if (choice?.finish_reason) sawFinish = true;
-      result.outputChars += deltaChars(chunk);
-
-      if (!committed) {
-        if (!chunkHasOutput(chunk)) {
-          held.push({ event, chunk });
+      const next = reader.read(event);
+      switch (next.kind) {
+        case "ignore":
           return true;
-        }
-        if (!(await commit(chunk))) {
-          controller.abort(new AbortReason("client"));
+        case "end":
           return false;
-        }
+        case "failed":
+          if (committed) await failMidStream(next.cause);
+          else result.classified = next.cause;
+          return false;
+        case "pending":
+          if (!committed) {
+            if (next.keepUntilCommit) held.push(event.raw);
+            return true;
+          }
+          break;
+        case "output":
+          if (!committed && !(await commit())) {
+            controller.abort(new AbortReason("client"));
+            return false;
+          }
+          break;
       }
-      if (isUsageOnly(chunk) && !ctx.wantsUsage) return true;
       if (!(await out.write(`${event.raw}\n\n`))) {
         controller.abort(new AbortReason("client"));
         return false;
       }
-      return true;
+      return !(next.kind === "output" && next.last);
     };
 
     try {
-      const response = await rt.upstream.sendChat(account, body, {
-        stream: true,
-        signal: controller.signal,
-      });
+      const response = await protocol.send(attempt, { stream: true, signal: controller.signal });
       result.httpStatus = response.status;
+      upstreamHeaders = response.headers;
 
       if (response.status >= 400) {
         const text = await readLimited(response.body);
-        result.classified = classifyHttpError(response.status, response.headers, text, rt.now());
+        result.classified = protocol.classifyHttpError(
+          response.status,
+          response.headers,
+          text,
+          rt.now(),
+        );
+        result.failure = { status: response.status, headers: response.headers, text };
         return result;
       }
 
       let keepReading = true;
       if (!headerString(response.headers["content-type"]).includes("text/event-stream")) {
         // Some gateways answer a stream request with one JSON document.
-        const text = await response.body.text();
-        let parsed: JsonObject | null = null;
-        try {
-          parsed = asObject(JSON.parse(text));
-        } catch {
-          parsed = null;
-        }
-        if (parsed?.error && !parsed.choices) {
-          result.classified = classifyEmbeddedError(parsed, rt.now());
+        const events = reader.fromDocument(await response.body.text(), rt.now());
+        if (!Array.isArray(events)) {
+          result.classified = events;
           return result;
         }
-        if (!parsed || !Array.isArray(parsed.choices)) {
-          result.classified = {
-            outcome: "upstream_error",
-            retryElsewhere: true,
-            scope: "model",
-            code: "invalid_response",
-            message: "The upstream did not return a stream.",
-          };
-          return result;
-        }
-        for (const event of responseToEvents(parsed)) keepReading &&= await handleEvent(event);
+        for (const event of events) keepReading &&= await handleEvent(event);
       } else {
         const decoder = new SseDecoder();
         for await (const bytes of response.body) {
@@ -604,6 +490,7 @@ class ChatRun {
         }
         if (!keepReading) response.body.destroy();
       }
+      syncReader();
 
       if (controller.signal.aborted) {
         result.delivered = committed;
@@ -612,8 +499,9 @@ class ChatRun {
       }
       if (result.delivered) return result; // a stream error was already reported
       if (committed) {
-        if (sawDone || sawFinish) {
-          await out.write("data: [DONE]\n\n");
+        if (reader.finished) {
+          const closing = reader.closingText();
+          if (closing !== null) await out.write(closing);
           out.endStream();
           result.delivered = true;
           result.classified = OK;
@@ -636,6 +524,7 @@ class ChatRun {
       }
       return result;
     } catch (error) {
+      syncReader();
       const cause = this.failureFromError(error, controller.signal);
       if (committed && cause.outcome !== "client_aborted") {
         await failMidStream(cause);
@@ -650,22 +539,36 @@ class ChatRun {
     }
   }
 
-  private async sendClientError(result: Classified, httpStatus: number | null): Promise<void> {
+  private async sendClientError(attempt: AttemptResult): Promise<void> {
+    const { classified: result, httpStatus, failure } = attempt;
+    const { out, protocol, ctx } = this;
     const status = result.clientStatus ?? httpStatus ?? 400;
     this.finalStatus = status;
+    const requestHeader = { "x-llmr-request-id": ctx.requestId };
+
+    const forwarded =
+      failure && !out.started
+        ? protocol.forwardedError(failure.status, failure.headers, failure.text)
+        : null;
+    if (forwarded) {
+      out.setHeaders({ ...forwarded.headers, ...requestHeader });
+      await out.sendBody(failure!.status, forwarded.body, forwarded.contentType);
+      return;
+    }
+
     const type = result.outcome === "refusal" ? "content_policy_error" : "invalid_request_error";
-    await this.out.sendError(
+    await out.sendError(
       status,
       result.message || "The upstream rejected the request.",
       type,
       result.code ?? null,
       result.outcome === "context_overflow" ? "messages" : null,
-      { "x-llmr-request-id": this.ctx.requestId },
+      requestHeader,
     );
   }
 
   private async sendAllFailed(): Promise<void> {
-    const { rt, plan, ctx, out } = this;
+    const { rt, plan, ctx, out, protocol } = this;
     const failedForCapacity = this.attempts.every((attempt) =>
       ["quota_exhausted", "billing", "rate_limited"].includes(attempt.outcome),
     );
@@ -687,31 +590,34 @@ class ChatRun {
     if (this.reasons.length > 0) headers["x-llmr-fallback"] = this.reasonList();
     const details =
       this.reasons.length > 0 ? ` Details: ${this.reasonList().replaceAll(",", ", ")}.` : "";
+    const outcomes = this.attempts.map((attempt) => attempt.outcome);
 
     if (hasBlockedTargets && failedForCapacity) {
       const earliest = retryTimes.length > 0 ? Math.min(...retryTimes) : rt.now() + 60_000;
       const retryAfter = Math.max(1, Math.ceil((earliest - rt.now()) / 1000));
       headers["retry-after"] = String(retryAfter);
       this.finalOutcome = this.attempts.length > 0 ? this.finalOutcome : "quota_exhausted";
-      this.finalStatus = 429;
+      const failure = protocol.allFailed(outcomes, true);
+      this.finalStatus = failure.status;
       await out.sendError(
-        429,
+        failure.status,
         `All targets for this request are out of quota or budget.${details}`,
         "rate_limit_error",
         "all_targets_exhausted",
         null,
-        headers,
+        { ...headers, ...failure.headers },
       );
       return;
     }
-    this.finalStatus = 502;
+    const failure = protocol.allFailed(outcomes, false);
+    this.finalStatus = failure.status;
     await out.sendError(
-      502,
+      failure.status,
       `No target could serve this request.${details}`,
       "router_error",
       "all_targets_failed",
       null,
-      headers,
+      { ...headers, ...failure.headers },
     );
   }
 

@@ -1,6 +1,38 @@
 import type { ServerResponse } from "node:http";
 import type { FastifyReply } from "fastify";
-import { errorBody } from "../errors.js";
+import { anthropicErrorBody, errorBody } from "../errors.js";
+
+/** How errors look in the format this client speaks. */
+export interface ErrorFormat {
+  json(
+    status: number,
+    message: string,
+    type: string,
+    code: string | null,
+    param: string | null,
+  ): string;
+  /** The complete text that ends a stream with this error. */
+  streamEnd(
+    status: number,
+    message: string,
+    type: string,
+    code: string | null,
+    param: string | null,
+  ): string;
+}
+
+export const OPENAI_ERRORS: ErrorFormat = {
+  json: (_status, message, type, code, param) =>
+    JSON.stringify(errorBody(message, type, code, param)),
+  streamEnd: (_status, message, type, code, param) =>
+    `data: ${JSON.stringify(errorBody(message, type, code, param))}\n\ndata: [DONE]\n\n`,
+};
+
+export const ANTHROPIC_ERRORS: ErrorFormat = {
+  json: (status, message) => JSON.stringify(anthropicErrorBody(status, message)),
+  streamEnd: (status, message) =>
+    `event: error\ndata: ${JSON.stringify(anthropicErrorBody(status, message))}\n\n`,
+};
 
 /** Writes to the client as either one JSON response or an event stream. */
 export class ClientResponse {
@@ -15,6 +47,7 @@ export class ClientResponse {
   constructor(
     private readonly reply: FastifyReply,
     private readonly now: () => number = Date.now,
+    private readonly errors: ErrorFormat = OPENAI_ERRORS,
   ) {
     this.raw = reply.raw;
   }
@@ -100,14 +133,15 @@ export class ClientResponse {
   }
 
   async sendJson(status: number, body: string): Promise<void> {
+    await this.sendBody(status, body, "application/json; charset=utf-8");
+  }
+
+  /** Sends a complete response, unless a stream has already begun. */
+  async sendBody(status: number, body: string, contentType: string): Promise<void> {
     this.stopKeepalive();
     if (this.streamStarted || this.reply.sent || this.gone) return;
     this.finished = true;
-    await this.reply
-      .code(status)
-      .headers(this.headers)
-      .type("application/json; charset=utf-8")
-      .send(body);
+    await this.reply.code(status).headers(this.headers).type(contentType).send(body);
   }
 
   /** Reports an error with a status code, or as an event if streaming began. */
@@ -120,13 +154,11 @@ export class ClientResponse {
     headers: Record<string, string> = {},
   ): Promise<void> {
     this.setHeaders(headers);
-    const body = JSON.stringify(errorBody(message, type, code, param));
     if (this.streamStarted) {
-      await this.write(`data: ${body}\n\n`);
-      await this.write("data: [DONE]\n\n");
+      await this.write(this.errors.streamEnd(status, message, type, code, param));
       this.endStream();
       return;
     }
-    await this.sendJson(status, body);
+    await this.sendJson(status, this.errors.json(status, message, type, code, param));
   }
 }

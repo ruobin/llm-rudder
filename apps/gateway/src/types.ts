@@ -3,6 +3,8 @@ export type JsonObject = Record<string, unknown>;
 export type CostClass = "prepaid" | "free" | "metered";
 export type NoticeMode = "text" | "none";
 export type Trust = "first_party" | "self_hosted" | "third_party";
+/** The request format a client speaks and an upstream accepts. */
+export type Dialect = "openai.chat" | "anthropic.messages";
 
 export type Outcome =
   | "ok"
@@ -40,6 +42,9 @@ export interface Usage {
   cachedTokens: number;
   /** Output tokens including reasoning tokens. */
   outputTokens: number;
+  /** Prompt-cache writes, which Anthropic bills above the input price. */
+  cacheWrite5mTokens?: number;
+  cacheWrite1hTokens?: number;
 }
 
 export interface Target {

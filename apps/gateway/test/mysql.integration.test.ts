@@ -92,6 +92,7 @@ describe.skipIf(!url)("MySQL persistence", () => {
           outcome: "ok",
           errorCode: null,
           inputTokens: 10,
+          cacheWriteTokens: 0,
           cachedTokens: 0,
           outputTokens: 2,
           usageComplete: true,

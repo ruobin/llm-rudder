@@ -34,6 +34,7 @@ export interface AttemptRecord {
   errorCode: string | null;
   inputTokens: number | null;
   cachedTokens: number | null;
+  cacheWriteTokens: number | null;
   outputTokens: number | null;
   usageComplete: boolean;
   costMicroUsd: number | null;

@@ -53,6 +53,7 @@ export const attempts = mysqlTable(
     errorCode: varchar("error_code", { length: 128 }),
     inputTokens: int("input_tokens"),
     cachedTokens: int("cached_tokens"),
+    cacheWriteTokens: int("cache_write_tokens"),
     outputTokens: int("output_tokens"),
     usageComplete: boolean("usage_complete").notNull().default(true),
     costMicroUsd: bigint("cost_micro_usd", { mode: "number" }),

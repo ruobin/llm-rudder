@@ -26,7 +26,15 @@ export interface Runtime {
   limits: ClientLimits;
   authThrottle: FailedAuthThrottle;
   meteredSeen: Set<string>;
+  /** The latest report from each connected edge. */
+  edgeReports: Map<string, EdgeStatus>;
   draining: boolean;
+}
+
+export interface EdgeStatus {
+  at: number;
+  edgeVersion: string;
+  usage: Record<string, number>;
 }
 
 export interface RuntimeOptions {
@@ -104,6 +112,7 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
     limits: new ClientLimits(now),
     authThrottle: new FailedAuthThrottle(now),
     meteredSeen: new Set(),
+    edgeReports: new Map(),
     draining: false,
   };
 }

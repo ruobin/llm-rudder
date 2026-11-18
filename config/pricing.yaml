@@ -19,8 +19,22 @@ models:
   gemini-3.8-flash: { input: 1.5, output: 7.5, cached_input: 0.15 } # from 2027-01-01
   gemini-3.5-flash-lite: { input: 0.3, output: 2.5, cached_input: 0.03 }
 
-  # Anthropic
-  claude-fable-5-2: { input: 8, output: 40, cached_input: 0.2 }
-  claude-opus-5-5: { input: 4, output: 20, cached_input: 0.2 }
-  claude-sonnet-5-5: { input: 2, output: 10, cached_input: 0.1 }
-  claude-haiku-5-5: { input: 0.1, output: 0.5 }
+  # Anthropic. Cache writes last 5 minutes or 1 hour. Haiku costs more above 100,000 input tokens.
+  claude-fable-5-2:
+    { input: 8, output: 40, cached_input: 0.2, cache_write_5m: 10, cache_write_1h: 16 }
+  claude-opus-5-5: { input: 4, output: 20, cached_input: 0.2, cache_write_5m: 5, cache_write_1h: 8 }
+  claude-sonnet-5-5:
+    { input: 2, output: 10, cached_input: 0.1, cache_write_5m: 2.5, cache_write_1h: 4 }
+  claude-haiku-5-5:
+    input: 0.1
+    output: 0.5
+    cached_input: 0.01
+    cache_write_5m: 0.125
+    cache_write_1h: 0.2
+    long_context:
+      over_input_tokens: 100000
+      input: 0.5
+      output: 2.5
+      cached_input: 0.05
+      cache_write_5m: 0.625
+      cache_write_1h: 1

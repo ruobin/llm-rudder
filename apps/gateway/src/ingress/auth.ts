@@ -4,6 +4,12 @@ import type { ClientConfig } from "../config/load.js";
 import { RouterError } from "../errors.js";
 import type { Runtime } from "../runtime.js";
 
+declare module "fastify" {
+  interface FastifyRequest {
+    llmrClient: ClientConfig | null;
+  }
+}
+
 function invalidKey(): RouterError {
   return new RouterError(401, "invalid_api_key", "Invalid API key.", "authentication_error");
 }
@@ -42,6 +48,14 @@ export function authenticateAdmin(request: FastifyRequest, runtime: Runtime): vo
   if (key !== null && keysMatch(hashKey(key), runtime.config.adminKeyHash)) return;
   runtime.authThrottle.recordFailure(request.ip);
   throw invalidKey();
+}
+
+/** Authenticates before the body is read, so unauthenticated uploads are refused early. */
+export function clientAuthHook(runtime: Runtime) {
+  return async (request: FastifyRequest): Promise<void> => {
+    rejectLoop(request, runtime);
+    request.llmrClient = authenticateClient(request, runtime);
+  };
 }
 
 /** Refuses a request that this gateway itself sent, which would otherwise loop. */

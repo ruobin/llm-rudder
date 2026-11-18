@@ -11,6 +11,9 @@ export const CHAT_KEY = "llmr_chat_key_0123456789abcdefghijklmnop";
 export const SCRIPT_KEY = "llmr_script_key_0123456789abcdefghijklmn";
 export const LIMITED_KEY = "llmr_limited_key_0123456789abcdefghijklm";
 export const ADMIN_KEY = "llmr_admin_key_0123456789abcdefghijklmno";
+export const CLAUDE_KEY = "llmr_claude_key_0123456789abcdefghijklmn";
+export const ANTHROPIC_UPSTREAM_KEY = "upstream-anthropic-key";
+export const BACKUP_UPSTREAM_KEY = "upstream-backup-key";
 
 export const BASE_CONFIG = `
 version: 1
@@ -44,11 +47,52 @@ aliases:
 timeouts: { keepalive_after_s: 30, keepalive_interval_s: 15 }
 `;
 
+export const CLAUDE_CONFIG = `
+version: 1
+server: { host: 127.0.0.1, port: 0, max_body_mb: 1 }
+admin: { key_env: ADMIN_KEY }
+clients:
+  - { id: chat, key_env: CHAT_KEY, notice: text }
+  - { id: claude-code, key_env: CLAUDE_KEY, edge: true }
+accounts:
+  anthropic-key: { api: anthropic.messages, base_url_env: UPSTREAM_URL, api_key_env: ANTHROPIC_KEY, cost_class: metered, trust: first_party, budget: { daily_usd: 5 } }
+  backup: { api: anthropic.messages, auth_header: bearer, base_url_env: UPSTREAM_URL, api_key_env: BACKUP_KEY, cost_class: prepaid, trust: self_hosted }
+  openai-key: { base_url_env: UPSTREAM_URL, api_key_env: OPENAI_KEY, compat: openai, cost_class: metered, budget: { daily_usd: 1 } }
+  claude-plan: { kind: edge_only, cost_class: prepaid, trust: first_party }
+tiers:
+  frontier:
+    fallback_tiers: [medium, flash]
+    targets:
+      - { account: openai-key, model: gpt-frontier }
+      - { account: anthropic-key, model: claude-opus-5-5 }
+      - { account: backup, model: backup-opus }
+  medium:
+    fallback_tiers: [flash]
+    targets:
+      - { account: anthropic-key, model: claude-sonnet-5-5 }
+  flash:
+    targets:
+      - { account: openai-key, model: gpt-flash }
+      - { account: anthropic-key, model: claude-haiku-5-5 }
+aliases:
+  - { match: "claude-opus-*", tier: frontier }
+  - { match: "claude-sonnet-*", tier: medium }
+  - { match: "claude-haiku-*", tier: flash }
+  - { match: strong, tier: frontier }
+edge:
+  plan_account: claude-plan
+  plan_models: { frontier: claude-opus-5-5, medium: claude-sonnet-5-5, flash: claude-haiku-5-5 }
+timeouts: { keepalive_after_s: 30, keepalive_interval_s: 15 }
+`;
+
 export const PRICING = `
 version: test
 default: { input: 10, output: 50 }
 models:
   f-two: { input: 20, output: 100 }
+  claude-opus-5-5: { input: 4, output: 20, cached_input: 0.2, cache_write_5m: 5, cache_write_1h: 8 }
+  claude-sonnet-5-5: { input: 2, output: 10, cached_input: 0.1, cache_write_5m: 2.5, cache_write_1h: 4 }
+  claude-haiku-5-5: { input: 0.1, output: 0.5, cached_input: 0.01, cache_write_5m: 0.125, cache_write_1h: 0.2 }
 `;
 
 export interface TestGateway {
@@ -78,6 +122,9 @@ export async function startGateway(options: GatewayOptions = {}): Promise<TestGa
     CHAT_KEY,
     SCRIPT_KEY,
     LIMITED_KEY,
+    CLAUDE_KEY,
+    ANTHROPIC_KEY: ANTHROPIC_UPSTREAM_KEY,
+    BACKUP_KEY: BACKUP_UPSTREAM_KEY,
     UPSTREAM_URL: upstream.url,
     GATEWAY_KEY: "upstream-gateway-key",
     OPENAI_KEY: "upstream-openai-key",

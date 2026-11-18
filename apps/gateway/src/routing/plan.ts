@@ -44,7 +44,8 @@ function whyBlocked(
   rt: Runtime,
 ): Omit<SkippedTarget, "target"> | null {
   const account = rt.config.accounts.get(target.accountId);
-  if (!account?.enabled) return { reason: "disabled" };
+  if (!account?.enabled || account.kind !== "http") return { reason: "disabled" };
+  if (account.api !== ctx.dialect) return { reason: "wrong_api" };
   if (ctx.client.allowAccounts && !ctx.client.allowAccounts.has(target.accountId)) {
     return { reason: "not_allowed" };
   }
@@ -77,7 +78,7 @@ export function buildPlan(ctx: RequestContext, rt: Runtime): Plan {
   if (resolution.kind === "model") {
     ordered = resolution.targets;
   } else {
-    requestedTier = resolution.tier;
+    requestedTier = ctx.originalTier ?? resolution.tier;
     const tier = config.tiers.get(resolution.tier)!;
     const chain = ctx.allowFallback ? [tier.name, ...tier.fallbackTiers] : [tier.name];
     const all = uniqueByAccountModel(chain.flatMap((name) => config.tiers.get(name)!.targets));

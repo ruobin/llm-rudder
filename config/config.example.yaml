@@ -17,6 +17,8 @@ clients:
   - { id: pi, key_env: LLMR_KEY_PI, notice: text }
   - { id: chat-ui, key_env: LLMR_KEY_CHAT_UI, notice: text }
   - { id: scripts, key_env: LLMR_KEY_SCRIPTS, notice: none, rpm: 120 }
+  # Used by llmr-edge. See "Claude Code" in the README.
+  - { id: claude-code, key_env: LLMR_KEY_CLAUDE_CODE, notice: none, edge: true }
 
 accounts:
   # Any OpenAI-compatible gateway. compat can be new_api, openrouter or generic.
@@ -44,6 +46,23 @@ accounts:
     trust: first_party
     budget: { daily_usd: 5, monthly_usd: 50 }
 
+  # Serves /v1/messages, which is what Claude Code speaks. Until Phase 3 adds
+  # translation, only accounts with this api can serve Claude Code.
+  anthropic-key:
+    api: anthropic.messages
+    base_url: https://api.anthropic.com
+    api_key_env: ANTHROPIC_API_KEY
+    cost_class: metered
+    trust: first_party
+    budget: { daily_usd: 10, monthly_usd: 100 }
+
+  # Your Claude plan. Only llmr-edge uses it, from your own computer, so the
+  # gateway holds no URL or key for it and only shows the state it reports.
+  claude-plan:
+    kind: edge_only
+    cost_class: prepaid
+    trust: first_party
+
 # Targets are tried in order. Replace the my-gateway models with ones your gateway serves.
 tiers:
   frontier:
@@ -51,6 +70,7 @@ tiers:
     prefer: quality # quality: use metered targets before falling back; cost: fall back first
     context_window: 200000
     targets:
+      - { account: anthropic-key, model: claude-opus-5-5 }
       - { account: my-gateway, model: claude-opus-5-5 }
       - { account: openai-key, model: gpt-6-astra, params: { reasoning_effort: high } }
       - { account: gemini-key, model: gemini-4-carbon }
@@ -60,6 +80,7 @@ tiers:
     context_window: 200000
     targets:
       - { account: gemini-key, model: gemini-4-hydrogen }
+      - { account: anthropic-key, model: claude-sonnet-5-5 }
       - { account: my-gateway, model: claude-sonnet-5-5 }
       - { account: openai-key, model: gpt-6.1-sol }
   flash:
@@ -69,6 +90,7 @@ tiers:
     targets:
       - { account: gemini-key, model: gemini-3.5-flash-lite }
       - { account: openai-key, model: gpt-6-luna }
+      - { account: anthropic-key, model: claude-haiku-5-5 }
       - { account: my-gateway, model: claude-haiku-5-5 }
 
 aliases:
@@ -91,6 +113,15 @@ timeouts:
   stream_idle_s: 300
   keepalive_after_s: 20
   keepalive_interval_s: 15
+
+# What llmr-edge tries for each tier. It starts with your plan.
+edge:
+  plan_account: claude-plan
+  plan_models:
+    frontier: claude-opus-5-5
+    medium: claude-sonnet-5-5
+    flash: claude-haiku-5-5
+  report_interval_s: 300
 
 notifications:
   ntfy_url_env: LLMR_NTFY_URL
