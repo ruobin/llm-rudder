@@ -269,7 +269,7 @@ The stages and their triggers are in `DESIGN.md` section 10.
 - [x] Token-refresh lock for instances that share a ChatGPT sign-in
 - [x] Client keys, config reloads and tool-call artifacts shared between instances
 - [x] Instances keep serving when Redis is down, and catch up when it returns
-- [ ] **(you)** Decide whether SG1 should run two instances
+- [ ] **(you)** Decide whether your server should run two instances
 
 **Later stages**
 
