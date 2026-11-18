@@ -1,0 +1,32 @@
+# Spreads requests across the gateway instances in docker-compose.scale.yml.
+{
+	admin off
+	auto_https off
+	persist_config off
+	servers {
+		# Keeps the client's address when a proxy on this host passes requests here.
+		trusted_proxies static private_ranges
+	}
+}
+
+:4141 {
+	reverse_proxy {
+		dynamic a {
+			name gateway
+			port 4141
+			refresh 1s
+		}
+		lb_policy least_conn
+		# An instance that is stopping refuses connections, so requests move to another.
+		lb_try_duration 15s
+		lb_try_interval 100ms
+		fail_duration 2s
+		# Send stream events as soon as they arrive.
+		flush_interval -1
+		transport http {
+			dial_timeout 1s
+			# A new connection each time, so none can be closed under a request.
+			keepalive off
+		}
+	}
+}

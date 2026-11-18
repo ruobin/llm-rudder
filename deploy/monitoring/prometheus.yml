@@ -8,5 +8,9 @@ scrape_configs:
     authorization:
       type: Bearer
       credentials_file: /run/secrets/metrics-key
-    static_configs:
-      - targets: ["gateway:4141"]
+    # Finds every gateway instance, however many are running.
+    dns_sd_configs:
+      - names: ["gateway"]
+        type: A
+        port: 4141
+        refresh_interval: 15s

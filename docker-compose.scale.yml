@@ -1,0 +1,73 @@
+# Runs several gateway instances behind a load balancer, sharing their state through Redis.
+# Turn it on in .env with: COMPOSE_FILE=docker-compose.yml:docker-compose.scale.yml
+services:
+  gateway:
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/0
+    # The balancer takes over this port, so that instances can come and go behind it.
+    ports: !reset []
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      replicas: ${LLMR_REPLICAS:-2}
+
+  balancer:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    user: "1000:1000"
+    environment:
+      XDG_CONFIG_HOME: /tmp/config
+      XDG_DATA_HOME: /tmp/data
+    ports:
+      - 127.0.0.1:${LLMR_PORT:-4141}:4141
+    volumes:
+      - ./deploy/caddy/balancer.Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - gateway
+    read_only: true
+    tmpfs:
+      - /tmp:uid=1000,gid=1000
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # Holds only what can be rebuilt, so nothing is written to disk. Prompts in tool-call
+  # reasoning stay in memory, as they do in the gateway itself.
+  redis:
+    image: redis:8.10-alpine
+    restart: unless-stopped
+    user: redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    command:
+      - sh
+      - -c
+      - >-
+        exec redis-server --requirepass "$$REDIS_PASSWORD" --save "" --appendonly no
+        --maxmemory 256mb --maxmemory-policy volatile-lru
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    read_only: true
+    tmpfs:
+      - /data:uid=999,gid=1000
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # Everything else reaches the gateway through the balancer.
+  dashboard:
+    environment:
+      LLMR_GATEWAY_URL: http://balancer:4141
+  caddy:
+    environment:
+      LLMR_UPSTREAM: balancer:4141
+  open-webui:
+    environment:
+      OPENAI_API_BASE_URL: http://balancer:4141/v1

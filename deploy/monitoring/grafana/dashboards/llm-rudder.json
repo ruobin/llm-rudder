@@ -154,7 +154,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count(llmr_target_available == 0) or vector(0)",
+          "expr": "count(max by (tier, account, model) (llmr_target_available) == 0) or vector(0)",
           "legendFormat": ""
         }
       ],
@@ -476,7 +476,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "llmr_target_available",
+          "expr": "max by (tier, account, model) (llmr_target_available)",
           "legendFormat": "{{tier}} {{model}} on {{account}}"
         }
       ],
@@ -523,7 +523,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "llmr_spend_today_usd",
+          "expr": "max by (account) (llmr_spend_today_usd)",
           "legendFormat": "{{account}} spend"
         },
         {
@@ -532,7 +532,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "llmr_balance_usd",
+          "expr": "max by (account) (llmr_balance_usd)",
           "legendFormat": "{{account}} balance"
         }
       ],
@@ -579,7 +579,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "llmr_active_requests",
+          "expr": "sum(llmr_active_requests)",
           "legendFormat": "active"
         }
       ],
