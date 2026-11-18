@@ -141,7 +141,7 @@ type RawLongContext = {
 };
 
 export function parsePricing(text: string): Pricing {
-  const result = pricingSchema.safeParse(parseYaml(text));
+  const result = pricingSchema.safeParse(readYaml(text, "pricing"));
   if (!result.success) {
     throw new ConfigError(formatZodError(result.error).map((p) => `pricing: ${p}`));
   }
@@ -452,13 +452,30 @@ export function buildConfig(
   };
 }
 
+/** Reads YAML, reporting a syntax error the same way as any other config problem. */
+function readYaml(text: string, name: string): unknown {
+  try {
+    return parseYaml(text) as unknown;
+  } catch (error) {
+    throw new ConfigError([`${name}: ${(error as Error).message.split("\n")[0]}`]);
+  }
+}
+
+function readConfigFile(path: string): string {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    throw new ConfigError([`${path}: ${(error as NodeJS.ErrnoException).code ?? "unreadable"}`]);
+  }
+}
+
 export function parseConfig(
   yamlText: string,
   pricingText: string,
   env: Record<string, string | undefined>,
   modelsText?: string,
 ): LoadedConfig {
-  const document: unknown = parseYaml(yamlText);
+  const document = readYaml(yamlText, "config");
   const secrets: string[] = [];
   findInlineSecrets(document, "", secrets);
   if (secrets.length > 0) {
@@ -485,14 +502,17 @@ export function loadConfig(
   path: string,
   env: Record<string, string | undefined> = process.env,
 ): LoadedConfig {
-  const yamlText = readFileSync(path, "utf8");
-  const document = parseYaml(yamlText) as { pricing_file?: unknown; models_file?: unknown } | null;
+  const yamlText = readConfigFile(path);
+  const document = readYaml(yamlText, "config") as {
+    pricing_file?: unknown;
+    models_file?: unknown;
+  } | null;
   const pricingFile =
     typeof document?.pricing_file === "string" ? document.pricing_file : "pricing.yaml";
   const modelsFile =
     typeof document?.models_file === "string" ? document.models_file : "models.yaml";
-  const pricingText = readFileSync(resolve(dirname(path), pricingFile), "utf8");
+  const pricingText = readConfigFile(resolve(dirname(path), pricingFile));
   const modelsPath = resolve(dirname(path), modelsFile);
-  const modelsText = existsSync(modelsPath) ? readFileSync(modelsPath, "utf8") : undefined;
+  const modelsText = existsSync(modelsPath) ? readConfigFile(modelsPath) : undefined;
   return parseConfig(yamlText, pricingText, env, modelsText);
 }

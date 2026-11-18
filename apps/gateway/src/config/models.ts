@@ -88,7 +88,13 @@ export const EMPTY_CATALOG: ModelCatalog = { version: "none", fallback: OPEN_PRO
 
 /** Returns the parsed catalog, or the problems that make it invalid. */
 export function parseModelCatalog(text: string): ModelCatalog | string[] {
-  const result = modelsSchema.safeParse(parseYaml(text));
+  let document: unknown;
+  try {
+    document = parseYaml(text);
+  } catch (error) {
+    return [`models: ${(error as Error).message.split("\n")[0]}`];
+  }
+  const result = modelsSchema.safeParse(document);
   if (!result.success) {
     return result.error.issues.map(
       (issue) => `models: ${issue.path.join(".") || "(root)"}: ${issue.message}`,

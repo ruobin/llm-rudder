@@ -121,6 +121,24 @@ describe("config reload", () => {
     expect(removed.status).toBe(401);
   });
 
+  it("rejects a file that is not valid YAML and keeps running on the old config", async () => {
+    writeConfig("version: 1\ntiers: [unclosed");
+    const response = await reload();
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as { reloaded: boolean; problems: string[] };
+    expect(body.reloaded).toBe(false);
+    expect(body.problems[0]).toMatch(/^config: /);
+    expect((await ask()).status).toBe(200);
+  });
+
+  it("rejects a missing price list", async () => {
+    writeConfig(BASE_CONFIG);
+    rmSync(join(dir, "pricing.yaml"));
+    const response = await reload();
+    expect(response.status).toBe(422);
+    expect(((await response.json()) as { problems: string[] }).problems[0]).toContain("ENOENT");
+  });
+
   it("needs the admin key", async () => {
     const response = await fetch(`${gateway.url}/router/config/reload`, { method: "POST" });
     expect(response.status).toBe(401);
