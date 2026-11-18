@@ -4,3 +4,4 @@ coverage
 apps/gateway/drizzle
 .next
 next-env.d.ts
+apps/gateway/test/fixtures/

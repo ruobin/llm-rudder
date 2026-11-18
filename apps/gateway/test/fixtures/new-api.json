@@ -1,0 +1,150 @@
+{
+ "_about": "Real responses from a New API instance (v1.0.0-rc.47), recorded 2026-11-19. IDs, timestamps and system instructions are removed.",
+ "responses-text-stream": {
+  "status": 200,
+  "events": [
+   "event: response.created\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"safety_buffering\":false,\"response\":{\"input_transformations\":[],\"id\":\"resp_fixture\",\"object\":\"response\",\"created_at\":1700000000,\"completed_at\":null,\"status\":\"in_progress\",\"background\":false,\"frequency_penalty\":0.0,\"presence_penalty\":0.0,\"moderation\":null,\"model\":\"gpt-6.1-terra\",\"access_programs\":{\"cyber\":\"standard\"},\"instructions\":\"\",\"output\":[],\"error\":null,\"incomplete_details\":null,\"tools\":[],\"tool_choice\":\"auto\",\"parallel_tool_calls\":true,\"prompt_cache_retention\":\"24h\",\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"top_p\":0.98,\"top_logprobs\":0,\"temperature\":1.0,\"reasoning\":{\"effort\":\"low\",\"context\":\"all_turns\",\"summary\":null,\"mode\":\"standard\"},\"usage\":null,\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"store\":false,\"metadata\":{},\"max_output_tokens\":null,\"max_tool_calls\":null,\"service_tier\":\"auto\",\"truncation\":\"disabled\",\"image\":{\"context_compression\":\"disabled\"}}}",
+   "event: response.in_progress\ndata: {\"type\":\"response.in_progress\",\"sequence_number\":1,\"safety_buffering\":false,\"response\":{\"input_transformations\":[],\"id\":\"resp_fixture\",\"object\":\"response\",\"created_at\":1700000000,\"completed_at\":null,\"status\":\"in_progress\",\"background\":false,\"frequency_penalty\":0.0,\"presence_penalty\":0.0,\"moderation\":null,\"model\":\"gpt-6.1-terra\",\"access_programs\":{\"cyber\":\"standard\"},\"instructions\":\"\",\"output\":[],\"error\":null,\"incomplete_details\":null,\"tools\":[],\"tool_choice\":\"auto\",\"parallel_tool_calls\":true,\"prompt_cache_retention\":\"24h\",\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"top_p\":0.98,\"top_logprobs\":0,\"temperature\":1.0,\"reasoning\":{\"effort\":\"low\",\"context\":\"all_turns\",\"summary\":null,\"mode\":\"standard\"},\"usage\":null,\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"store\":false,\"metadata\":{},\"max_output_tokens\":null,\"max_tool_calls\":null,\"service_tier\":\"auto\",\"truncation\":\"disabled\",\"image\":{\"context_compression\":\"disabled\"}}}",
+   "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"sequence_number\":2,\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_fixture\",\"role\":\"assistant\",\"status\":\"in_progress\",\"content\":[],\"phase\":\"final_answer\"}}",
+   "event: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"sequence_number\":3,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[],\"logprobs\":[]}}",
+   "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":4,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"delta\":\"ok\",\"logprobs\":[],\"safety_buffering\":false}",
+   "event: response.metadata\ndata: {\"type\":\"response.metadata\",\"sequence_number\":5,\"response_id\":\"resp_fixture\",\"metadata\":{}}",
+   "event: response.output_text.done\ndata: {\"type\":\"response.output_text.done\",\"sequence_number\":6,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"text\":\"ok\",\"logprobs\":[]}",
+   "event: response.content_part.done\ndata: {\"type\":\"response.content_part.done\",\"sequence_number\":7,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"ok\",\"annotations\":[],\"logprobs\":[]}}",
+   "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"sequence_number\":8,\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_fixture\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\",\"annotations\":[],\"logprobs\":[]}],\"phase\":\"final_answer\"}}",
+   "event: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":9,\"safety_buffering\":false,\"response\":{\"input_transformations\":[],\"id\":\"resp_fixture\",\"object\":\"response\",\"created_at\":1700000000,\"completed_at\":1700000000,\"status\":\"completed\",\"background\":false,\"frequency_penalty\":0.0,\"presence_penalty\":0.0,\"moderation\":null,\"model\":\"gpt-6.1-terra\",\"access_programs\":{\"cyber\":\"standard\"},\"instructions\":\"\",\"output\":[{\"type\":\"message\",\"id\":\"msg_fixture\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\",\"annotations\":[],\"logprobs\":[]}],\"phase\":\"final_answer\"}],\"error\":null,\"incomplete_details\":null,\"tools\":[],\"tool_choice\":\"auto\",\"parallel_tool_calls\":true,\"prompt_cache_retention\":\"24h\",\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"top_p\":0.98,\"top_logprobs\":0,\"temperature\":1.0,\"reasoning\":{\"effort\":\"low\",\"context\":\"all_turns\",\"summary\":null,\"mode\":\"standard\"},\"usage\":{\"input_tokens\":4163,\"input_tokens_details\":{\"cached_tokens\":3968,\"cache_write_tokens\":0,\"cache_write_tokens_details\":{\"ttl_30m_tokens\":0,\"ttl_12h_tokens\":0}},\"output_tokens\":5,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":4168,\"attribution\":{\"items\":{\"msg_01df146d283cf250016afe1b4d47b487d0b043d2175c5973c2\":{\"input_tokens\":9,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0,\"content\":[{\"input_tokens\":9,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0}]},\"msg_01df146d283cf250016afe1b4e6af087d0a536834fe812e093\":{\"input_tokens\":2,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":5,\"content\":[{\"input_tokens\":2,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":5}]}},\"request_fields\":{\"instructions\":\"\"}}},\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"store\":false,\"metadata\":{},\"max_output_tokens\":null,\"max_tool_calls\":null,\"service_tier\":\"default\",\"truncation\":\"disabled\",\"image\":{\"context_compression\":\"disabled\"}}}"
+  ]
+ },
+ "responses-tool-stream": {
+  "status": 200,
+  "events": [
+   "event: response.created\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"safety_buffering\":false,\"response\":{\"input_transformations\":[],\"id\":\"resp_fixture\",\"object\":\"response\",\"created_at\":1700000000,\"completed_at\":null,\"status\":\"in_progress\",\"background\":false,\"frequency_penalty\":0.0,\"presence_penalty\":0.0,\"moderation\":null,\"model\":\"gpt-6.1-terra\",\"access_programs\":{\"cyber\":\"standard\"},\"instructions\":\"\",\"output\":[],\"error\":null,\"incomplete_details\":null,\"tools\":[{\"type\":\"function\",\"name\":\"get_time\",\"description\":\"Returns the current time in a city.\",\"parameters\":{\"additionalProperties\":false,\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":true}],\"tool_choice\":\"required\",\"parallel_tool_calls\":true,\"prompt_cache_retention\":\"24h\",\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"top_p\":0.98,\"top_logprobs\":0,\"temperature\":1.0,\"reasoning\":{\"effort\":\"low\",\"context\":\"all_turns\",\"summary\":null,\"mode\":\"standard\"},\"usage\":null,\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"store\":false,\"metadata\":{},\"max_output_tokens\":null,\"max_tool_calls\":null,\"service_tier\":\"auto\",\"truncation\":\"disabled\",\"image\":{\"context_compression\":\"disabled\"}}}",
+   "event: response.in_progress\ndata: {\"type\":\"response.in_progress\",\"sequence_number\":1,\"safety_buffering\":false,\"response\":{\"input_transformations\":[],\"id\":\"resp_fixture\",\"object\":\"response\",\"created_at\":1700000000,\"completed_at\":null,\"status\":\"in_progress\",\"background\":false,\"frequency_penalty\":0.0,\"presence_penalty\":0.0,\"moderation\":null,\"model\":\"gpt-6.1-terra\",\"access_programs\":{\"cyber\":\"standard\"},\"instructions\":\"\",\"output\":[],\"error\":null,\"incomplete_details\":null,\"tools\":[{\"type\":\"function\",\"name\":\"get_time\",\"description\":\"Returns the current time in a city.\",\"parameters\":{\"additionalProperties\":false,\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":true}],\"tool_choice\":\"required\",\"parallel_tool_calls\":true,\"prompt_cache_retention\":\"24h\",\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"top_p\":0.98,\"top_logprobs\":0,\"temperature\":1.0,\"reasoning\":{\"effort\":\"low\",\"context\":\"all_turns\",\"summary\":null,\"mode\":\"standard\"},\"usage\":null,\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"store\":false,\"metadata\":{},\"max_output_tokens\":null,\"max_tool_calls\":null,\"service_tier\":\"auto\",\"truncation\":\"disabled\",\"image\":{\"context_compression\":\"disabled\"}}}",
+   "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"sequence_number\":2,\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_fixture\",\"role\":\"assistant\",\"status\":\"in_progress\",\"content\":[],\"phase\":\"commentary\"}}",
+   "event: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"sequence_number\":3,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[],\"logprobs\":[]}}",
+   "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":4,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"delta\":\"I\",\"logprobs\":[],\"safety_buffering\":false}",
+   "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":5,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"delta\":\"’ll\",\"logprobs\":[],\"safety_buffering\":false}",
+   "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":6,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"delta\":\" check\",\"logprobs\":[],\"safety_buffering\":false}",
+   "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":7,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"delta\":\" the\",\"logprobs\":[],\"safety_buffering\":false}",
+   "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":8,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"delta\":\" current\",\"logprobs\":[],\"safety_buffering\":false}",
+   "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":9,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"delta\":\" time\",\"logprobs\":[],\"safety_buffering\":false}",
+   "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":10,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"delta\":\" in\",\"logprobs\":[],\"safety_buffering\":false}",
+   "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":11,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"delta\":\" Singapore\",\"logprobs\":[],\"safety_buffering\":false}",
+   "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":12,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"delta\":\".\",\"logprobs\":[],\"safety_buffering\":false}",
+   "event: response.output_text.done\ndata: {\"type\":\"response.output_text.done\",\"sequence_number\":13,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"text\":\"I’ll check the current time in Singapore.\",\"logprobs\":[]}",
+   "event: response.content_part.done\ndata: {\"type\":\"response.content_part.done\",\"sequence_number\":14,\"item_id\":\"msg_fixture\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"I’ll check the current time in Singapore.\",\"annotations\":[],\"logprobs\":[]}}",
+   "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"sequence_number\":15,\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_fixture\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"I’ll check the current time in Singapore.\",\"annotations\":[],\"logprobs\":[]}],\"phase\":\"commentary\"}}",
+   "event: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"sequence_number\":16,\"output_index\":1,\"item\":{\"type\":\"function_call\",\"id\":\"fc_fixture\",\"call_id\":\"call_fixture\",\"name\":\"get_time\",\"arguments\":\"\",\"status\":\"in_progress\"}}",
+   "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":17,\"item_id\":\"fc_fixture\",\"output_index\":1,\"delta\":\"{\\\"\"}",
+   "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":18,\"item_id\":\"fc_fixture\",\"output_index\":1,\"delta\":\"city\"}",
+   "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":19,\"item_id\":\"fc_fixture\",\"output_index\":1,\"delta\":\"\\\":\\\"\"}",
+   "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":20,\"item_id\":\"fc_fixture\",\"output_index\":1,\"delta\":\"Singapore\"}",
+   "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":21,\"item_id\":\"fc_fixture\",\"output_index\":1,\"delta\":\"\\\"}\"}",
+   "event: response.function_call_arguments.done\ndata: {\"type\":\"response.function_call_arguments.done\",\"sequence_number\":22,\"item_id\":\"fc_fixture\",\"output_index\":1,\"arguments\":\"{\\\"city\\\":\\\"Singapore\\\"}\"}",
+   "event: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"sequence_number\":23,\"output_index\":1,\"item\":{\"type\":\"function_call\",\"id\":\"fc_fixture\",\"call_id\":\"call_fixture\",\"name\":\"get_time\",\"arguments\":\"{\\\"city\\\":\\\"Singapore\\\"}\",\"status\":\"completed\"}}",
+   "event: response.metadata\ndata: {\"type\":\"response.metadata\",\"sequence_number\":24,\"response_id\":\"resp_fixture\",\"metadata\":{}}",
+   "event: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":25,\"safety_buffering\":false,\"response\":{\"input_transformations\":[],\"id\":\"resp_fixture\",\"object\":\"response\",\"created_at\":1700000000,\"completed_at\":1700000000,\"status\":\"completed\",\"background\":false,\"frequency_penalty\":0.0,\"presence_penalty\":0.0,\"moderation\":null,\"model\":\"gpt-6.1-terra\",\"access_programs\":{\"cyber\":\"standard\"},\"instructions\":\"\",\"output\":[{\"type\":\"message\",\"id\":\"msg_fixture\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"I’ll check the current time in Singapore.\",\"annotations\":[],\"logprobs\":[]}],\"phase\":\"commentary\"},{\"type\":\"function_call\",\"id\":\"fc_fixture\",\"call_id\":\"call_fixture\",\"name\":\"get_time\",\"arguments\":\"{\\\"city\\\":\\\"Singapore\\\"}\",\"status\":\"completed\"}],\"error\":null,\"incomplete_details\":null,\"tools\":[{\"type\":\"function\",\"name\":\"get_time\",\"description\":\"Returns the current time in a city.\",\"parameters\":{\"additionalProperties\":false,\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"],\"type\":\"object\"},\"output_schema\":null,\"strict\":true}],\"tool_choice\":\"required\",\"parallel_tool_calls\":true,\"prompt_cache_retention\":\"24h\",\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"top_p\":0.98,\"top_logprobs\":0,\"temperature\":1.0,\"reasoning\":{\"effort\":\"low\",\"context\":\"all_turns\",\"summary\":null,\"mode\":\"standard\"},\"usage\":{\"input_tokens\":4207,\"input_tokens_details\":{\"cached_tokens\":0,\"cache_write_tokens\":0,\"cache_write_tokens_details\":{\"ttl_30m_tokens\":0,\"ttl_12h_tokens\":0}},\"output_tokens\":34,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":4241,\"attribution\":{\"items\":{\"fc_08a98270e0cc047c016afe1b4fd5a087d0ab1a9daba222397c\":{\"input_tokens\":0,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":20},\"msg_08a98270e0cc047c016afe1b4ee41887d08c1af98a5d7a8cbe\":{\"input_tokens\":15,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0,\"content\":[{\"input_tokens\":15,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0}]},\"msg_08a98270e0cc047c016afe1b4f672887d085fd1274492a69d3\":{\"input_tokens\":2,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":14,\"content\":[{\"input_tokens\":2,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":14}]}},\"request_fields\":{\"instructions\":\"\",\"tools\":{\"input_tokens\":38,\"cached_tokens\":0,\"cache_write_tokens\":0,\"output_tokens\":0}}}},\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"text_tokens\":0,\"image_tokens\":0},\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0}},\"web_search\":{\"num_requests\":0}},\"store\":false,\"metadata\":{},\"max_output_tokens\":null,\"max_tool_calls\":null,\"service_tier\":\"default\",\"truncation\":\"disabled\",\"image\":{\"context_compression\":\"disabled\"}}}"
+  ]
+ },
+ "chat-text": {
+  "status": 200,
+  "body": {
+   "id": "resp_fixture",
+   "object": "chat.completion",
+   "created": 1700000000,
+   "model": "gpt-6.1-terra",
+   "choices": [
+    {
+     "index": 0,
+     "message": {
+      "role": "assistant",
+      "content": "ok"
+     },
+     "finish_reason": "stop"
+    }
+   ],
+   "usage": {
+    "prompt_tokens": 11,
+    "completion_tokens": 5,
+    "total_tokens": 16
+   },
+   "service_tier": "default"
+  }
+ },
+ "chat-text-stream": {
+  "status": 200,
+  "events": [
+   "data: {\"id\":\"resp_fixture\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-6.1-terra\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}],\"service_tier\":\"auto\"}",
+   "data: {\"id\":\"resp_fixture\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-6.1-terra\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}],\"service_tier\":\"auto\"}",
+   "data: {\"id\":\"resp_fixture\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-6.1-terra\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\"},\"finish_reason\":\"stop\"}],\"service_tier\":\"default\"}",
+   "data: {\"id\":\"resp_fixture\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-6.1-terra\",\"choices\":[],\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":5,\"total_tokens\":16},\"service_tier\":\"default\"}",
+   "data: [DONE]"
+  ]
+ },
+ "chat-tool-stream": {
+  "status": 200,
+  "events": [
+   "data: {\"id\":\"resp_fixture\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-6.1-terra\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}],\"service_tier\":\"auto\"}",
+   "data: {\"id\":\"resp_fixture\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-6.1-terra\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_fixture\",\"type\":\"function\",\"function\":{\"name\":\"get_time\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"service_tier\":\"auto\"}",
+   "data: {\"id\":\"resp_fixture\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-6.1-terra\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"\"}}]},\"finish_reason\":null}],\"service_tier\":\"auto\"}",
+   "data: {\"id\":\"resp_fixture\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-6.1-terra\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"city\"}}]},\"finish_reason\":null}],\"service_tier\":\"auto\"}",
+   "data: {\"id\":\"resp_fixture\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-6.1-terra\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\":\\\"\"}}]},\"finish_reason\":null}],\"service_tier\":\"auto\"}",
+   "data: {\"id\":\"resp_fixture\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-6.1-terra\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"Singapore\"}}]},\"finish_reason\":null}],\"service_tier\":\"auto\"}",
+   "data: {\"id\":\"resp_fixture\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-6.1-terra\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"}\"}}]},\"finish_reason\":null}],\"service_tier\":\"auto\"}",
+   "data: {\"id\":\"resp_fixture\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-6.1-terra\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\"},\"finish_reason\":\"tool_calls\"}],\"service_tier\":\"default\"}",
+   "data: {\"id\":\"resp_fixture\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"gpt-6.1-terra\",\"choices\":[],\"usage\":{\"prompt_tokens\":55,\"completion_tokens\":18,\"total_tokens\":73},\"service_tier\":\"default\"}",
+   "data: [DONE]"
+  ]
+ },
+ "error-unknown-model-responses": {
+  "status": 503,
+  "body": {
+   "error": {
+    "code": "model_not_found",
+    "message": "No available channel for model llmr-no-such-model under group default (distributor)",
+    "type": "new_api_error"
+   }
+  }
+ },
+ "error-unknown-model-chat": {
+  "status": 503,
+  "body": {
+   "error": {
+    "code": "model_not_found",
+    "message": "No available channel for model llmr-no-such-model under group default (distributor)",
+    "type": "new_api_error"
+   }
+  }
+ },
+ "error-invalid-key": {
+  "status": 401,
+  "body": {
+   "error": {
+    "code": "",
+    "message": "Invalid token",
+    "type": "new_api_error"
+   }
+  }
+ },
+ "error-no-key": {
+  "status": 401,
+  "body": {
+   "error": {
+    "code": "",
+    "message": "Invalid token",
+    "type": "new_api_error"
+   }
+  }
+ },
+ "error-bad-request": {
+  "status": 400,
+  "body": {
+   "error": {
+    "message": "json: cannot unmarshal number -1 into Go struct field OpenAIResponsesRequest.max_output_tokens of type uint",
+    "type": "new_api_error",
+    "param": "",
+    "code": "invalid_request"
+   }
+  }
+ }
+}
