@@ -3,11 +3,13 @@ import { buildApp } from "./app.js";
 import { ConfigError, loadConfig } from "./config/load.js";
 import { MysqlPersistence } from "./db/mysql.js";
 import { MemoryPersistence, type Persistence } from "./ledger/records.js";
+import { runLedgerMaintenance } from "./ledger/usage.js";
 import { createLogger, createRuntime, restoreState } from "./runtime.js";
 
 const DEFAULT_DRAIN_S = 280;
 const PIN_CLEANUP_MS = 10 * 60_000;
 const CHATGPT_UPKEEP_MS = 15 * 60_000;
+const LEDGER_MAINTENANCE_MS = 60 * 60_000;
 
 async function main(): Promise<void> {
   const log = createLogger();
@@ -49,6 +51,10 @@ async function main(): Promise<void> {
   };
   maintainChatGpt();
   setInterval(maintainChatGpt, CHATGPT_UPKEEP_MS).unref();
+
+  const maintainLedger = () => void runLedgerMaintenance(runtime);
+  maintainLedger();
+  setInterval(maintainLedger, LEDGER_MAINTENANCE_MS).unref();
 
   let stopping = false;
   const shutdown = async (signal: string) => {

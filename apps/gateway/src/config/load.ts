@@ -79,6 +79,7 @@ export interface Config {
     keepaliveIntervalMs: number;
   };
   notifications: { ntfyUrl?: string; webhookUrl?: string; repeatAfterMs: number };
+  retention: { ledgerDays: number; eventsDays: number };
   edge?: { planAccount: string; planModels: Map<string, string>; reportIntervalS: number };
   pricing: Pricing;
   models: ModelCatalog;
@@ -391,6 +392,10 @@ export function buildConfig(
         repeatAfterMs: seconds(notifications.repeat_after_s),
         ...(ntfyUrl ? { ntfyUrl } : {}),
         ...(webhookUrl ? { webhookUrl } : {}),
+      },
+      retention: {
+        ledgerDays: raw.retention.ledger_days,
+        eventsDays: raw.retention.events_days,
       },
       ...(raw.edge
         ? {

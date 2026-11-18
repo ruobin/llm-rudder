@@ -30,12 +30,7 @@ export function authenticateClient(request: FastifyRequest, runtime: Runtime): C
   checkThrottle(request, runtime);
   const key = extractKey(request.headers);
   if (key !== null) {
-    const presented = hashKey(key);
-    let match: ClientConfig | null = null;
-    // Every key is compared, so timing does not reveal which one was close.
-    for (const client of runtime.config.clients) {
-      if (keysMatch(presented, client.keyHash)) match = client;
-    }
+    const match = runtime.clients.authenticate(hashKey(key));
     if (match) return match;
   }
   runtime.authThrottle.recordFailure(request.ip);

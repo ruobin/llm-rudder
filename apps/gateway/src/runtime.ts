@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { chatGptEndpoints, CHATGPT_USAGE_URL, type ChatGptEndpoints } from "@llm-rudder/shared";
 import { pino, type Logger } from "pino";
+import { ClientRegistry } from "./auth/clients.js";
 import { ClientLimits, FailedAuthThrottle } from "./auth/limits.js";
 import { BudgetManager, dayPeriod, monthPeriod } from "./billing/budgets.js";
 import { ChatGptSession, credentialPath, SIGN_IN_COMMAND } from "./chatgpt/session.js";
@@ -31,6 +32,8 @@ export interface Runtime {
   chatgpt: Map<string, ChatGptSession>;
   upstream: UpstreamClient;
   persistence: Persistence;
+  /** Clients from the config file and from the dashboard. */
+  clients: ClientRegistry;
   limits: ClientLimits;
   authThrottle: FailedAuthThrottle;
   meteredSeen: Set<string>;
@@ -166,6 +169,7 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
     chatgpt,
     upstream: options.upstream ?? new HttpUpstreamClient(config, instanceId),
     persistence,
+    clients: new ClientRegistry(config.clients, persistence, now),
     limits: new ClientLimits(now),
     authThrottle: new FailedAuthThrottle(now),
     meteredSeen: new Set(),
@@ -177,11 +181,13 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
 /** Loads saved quota state and this period's spend. */
 export async function restoreState(runtime: Runtime): Promise<void> {
   const now = runtime.now();
-  const [quota, spend, pins] = await Promise.all([
+  const [quota, spend, pins, clientKeys] = await Promise.all([
     runtime.persistence.loadQuota(),
     runtime.persistence.loadSpend([dayPeriod(now), monthPeriod(now)]),
     runtime.persistence.loadPins(now - PIN_IDLE_MS),
+    runtime.persistence.loadClientKeys(),
   ]);
+  runtime.clients.load(clientKeys);
   runtime.quota.load(quota);
   // Tokens on disk mean a sign-in arrived or survived, so it deserves another try.
   for (const [accountId, session] of runtime.chatgpt) {

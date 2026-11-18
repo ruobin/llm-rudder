@@ -139,6 +139,13 @@ export const configSchema = z.strictObject({
       report_interval_s: positiveSeconds.default(300),
     })
     .optional(),
+  retention: z
+    .strictObject({
+      /** How long detailed request records are kept. Daily totals are kept for good. */
+      ledger_days: z.number().int().min(7).default(90),
+      events_days: z.number().int().min(7).default(90),
+    })
+    .prefault({}),
   pricing_file: z.string().default("pricing.yaml"),
   models_file: z.string().default("models.yaml"),
 });

@@ -5,9 +5,11 @@ import {
   datetime,
   index,
   int,
+  json,
   mysqlTable,
   primaryKey,
   smallint,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
 
@@ -62,6 +64,7 @@ export const attempts = mysqlTable(
   (table) => [
     primaryKey({ columns: [table.requestId, table.n] }),
     index("attempts_account_started").on(table.accountId, table.startedAt),
+    index("attempts_started").on(table.startedAt),
   ],
 );
 
@@ -114,4 +117,43 @@ export const events = mysqlTable(
     message: varchar("message", { length: 500 }).notNull(),
   },
   (table) => [index("events_at").on(table.at)],
+);
+
+/** One row per day, client, account and model. It outlives the detailed ledger. */
+export const usageDaily = mysqlTable(
+  "usage_daily",
+  {
+    day: char("day", { length: 10 }).notNull(),
+    clientId: varchar("client_id", { length: 64 }).notNull(),
+    accountId: varchar("account_id", { length: 64 }).notNull(),
+    model: varchar("model", { length: 128 }).notNull(),
+    served: int("served").notNull(),
+    failed: int("failed").notNull(),
+    inputTokens: bigint("input_tokens", { mode: "number" }).notNull(),
+    cachedTokens: bigint("cached_tokens", { mode: "number" }).notNull(),
+    cacheWriteTokens: bigint("cache_write_tokens", { mode: "number" }).notNull(),
+    outputTokens: bigint("output_tokens", { mode: "number" }).notNull(),
+    costMicroUsd: bigint("cost_micro_usd", { mode: "number" }).notNull(),
+    listMicroUsd: bigint("list_micro_usd", { mode: "number" }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.day, table.clientId, table.accountId, table.model] })],
+);
+
+/** Clients created from the dashboard. Only a hash of each key is stored. */
+export const clientKeys = mysqlTable(
+  "client_keys",
+  {
+    id: varchar("id", { length: 64 }).primaryKey(),
+    keyHash: char("key_hash", { length: 64 }).notNull(),
+    keyPrefix: varchar("key_prefix", { length: 16 }).notNull(),
+    notice: varchar("notice", { length: 8 }).notNull(),
+    rpm: int("rpm"),
+    maxConcurrent: int("max_concurrent").notNull(),
+    allowAccounts: json("allow_accounts").$type<string[]>(),
+    allowFallback: boolean("allow_fallback").notNull(),
+    createdAt: time("created_at").notNull(),
+    lastUsedAt: time("last_used_at"),
+    revokedAt: time("revoked_at"),
+  },
+  (table) => [uniqueIndex("client_keys_hash").on(table.keyHash)],
 );
