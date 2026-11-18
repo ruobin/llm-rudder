@@ -118,6 +118,8 @@ export const configSchema = z.strictObject({
       deadline_s: positiveSeconds.default(900),
       /** Tries targets in the client's own API format first within each tier. */
       prefer_same_format: z.boolean().default(true),
+      /** Within a tier, tries targets that have been failing after those of equal cost. */
+      health_order: z.boolean().default(true),
     })
     .prefault({}),
   timeouts: z

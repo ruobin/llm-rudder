@@ -153,7 +153,13 @@ export interface ClientItem {
 
 export interface GatewaySettings {
   pricingVersion: string;
-  routing: { maxAttemptsPerTier: number; deadlineMs: number; preferSameFormat: boolean };
+  canReload: boolean;
+  routing: {
+    maxAttemptsPerTier: number;
+    deadlineMs: number;
+    preferSameFormat: boolean;
+    healthOrder: boolean;
+  };
   timeouts: Record<string, number>;
   retention: { ledgerDays: number; eventsDays: number };
   notifications: { ntfy: boolean; webhook: boolean; telegram: boolean; repeatAfterMs: number };

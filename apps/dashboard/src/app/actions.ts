@@ -5,7 +5,13 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { endSession, requireSession, startSession } from "@/lib/auth";
 import { sessionSecrets } from "@/lib/env";
-import { createClient, GatewayError, resetAccount, revokeClient } from "@/lib/gateway";
+import {
+  createClient,
+  GatewayError,
+  reloadGatewayConfig,
+  resetAccount,
+  revokeClient,
+} from "@/lib/gateway";
 import { LoginThrottle } from "@/lib/login-throttle";
 import { verifyPassword } from "@/lib/password";
 
@@ -73,6 +79,27 @@ export async function createClientAction(
   } catch (error) {
     if (error instanceof GatewayError && error.status < 500) {
       return { error: error.message, created: null };
+    }
+    throw error;
+  }
+}
+
+export interface ReloadState {
+  message: string | null;
+  failed: boolean;
+}
+
+export async function reloadConfigAction(): Promise<ReloadState> {
+  try {
+    const { restartNeeded, warnings } = await reloadGatewayConfig();
+    revalidatePath("/", "layout");
+    const parts = ["The new settings are in use."];
+    if (restartNeeded.length > 0) parts.push(`Restart to apply: ${restartNeeded.join(", ")}.`);
+    if (warnings.length > 0) parts.push(`Warnings: ${warnings.join(" ")}`);
+    return { message: parts.join(" "), failed: false };
+  } catch (error) {
+    if (error instanceof GatewayError && error.status === 422) {
+      return { message: `Nothing changed. ${error.message}`, failed: true };
     }
     throw error;
   }

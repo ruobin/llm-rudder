@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { ReloadConfigForm } from "@/components/forms";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,7 +31,9 @@ export default async function SettingsPage() {
       <PageHeader
         title="Settings"
         description="Read from config/config.yaml on the server. Edit that file to change them."
-      />
+      >
+        {settings.canReload ? <ReloadConfigForm /> : null}
+      </PageHeader>
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -41,6 +44,7 @@ export default async function SettingsPage() {
               <Row label="Attempts per tier">{routing.maxAttemptsPerTier}</Row>
               <Row label="Time to reach first output">{formatDuration(routing.deadlineMs)}</Row>
               <Row label="Prefer the client's API format">{onOff(routing.preferSameFormat)}</Row>
+              <Row label="Try healthy targets first">{onOff(routing.healthOrder)}</Row>
               <Row label="First byte timeout">{formatDuration(timeouts.firstByteMs)}</Row>
               <Row label="Stream idle timeout">{formatDuration(timeouts.streamIdleMs)}</Row>
             </dl>

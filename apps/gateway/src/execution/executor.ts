@@ -155,11 +155,13 @@ class RequestRun {
       if (rt.now() >= ctx.deadlineAt) break;
 
       const { target } = step;
+      // A config reload may have removed this account after the plan was made.
+      const account = rt.config.accounts.get(target.accountId);
+      if (!account) continue;
       if (!rt.quota.tryAdmit(target)) {
         this.reasons.push(`${target.accountId}:probing`);
         continue;
       }
-      const account = rt.config.accounts.get(target.accountId) as AccountConfig;
       const hold = rt.budgets.reserve(account.id, estimateCost(ctx, target, rt));
       if (!hold) {
         rt.quota.releaseProbe(target);
@@ -219,6 +221,7 @@ class RequestRun {
         index -= 1;
         continue;
       }
+      const tripped = rt.health.record(target.id, outcome);
       if (outcome === "ok") {
         rt.quota.recordSuccess(target);
       } else if (outcome === "client_aborted") {
@@ -226,6 +229,7 @@ class RequestRun {
       } else {
         rt.quota.recordFailure(target, result.stateUpdate ?? result.classified);
       }
+      if (tripped) rt.quota.tripCircuit(target);
 
       if (result.delivered) {
         this.servedStep = step;

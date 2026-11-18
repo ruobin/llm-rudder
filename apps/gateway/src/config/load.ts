@@ -71,7 +71,12 @@ export interface Config {
   accounts: Map<string, AccountConfig>;
   tiers: Map<string, TierConfig>;
   aliases: { match: string; pattern: RegExp; tier: string }[];
-  routing: { maxAttemptsPerTier: number; deadlineMs: number; preferSameFormat: boolean };
+  routing: {
+    maxAttemptsPerTier: number;
+    deadlineMs: number;
+    preferSameFormat: boolean;
+    healthOrder: boolean;
+  };
   timeouts: {
     connectMs: number;
     firstByteMs: number;
@@ -407,6 +412,7 @@ export function buildConfig(
         maxAttemptsPerTier: raw.routing.max_attempts_per_tier,
         deadlineMs: seconds(raw.routing.deadline_s),
         preferSameFormat: raw.routing.prefer_same_format,
+        healthOrder: raw.routing.health_order,
       },
       timeouts: {
         connectMs: seconds(raw.timeouts.connect_s),

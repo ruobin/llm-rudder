@@ -5,7 +5,13 @@ import { ClientRegistry } from "./auth/clients.js";
 import { ClientLimits, FailedAuthThrottle } from "./auth/limits.js";
 import { BudgetManager, dayPeriod, monthPeriod } from "./billing/budgets.js";
 import { ChatGptSession, credentialPath, SIGN_IN_COMMAND } from "./chatgpt/session.js";
-import type { Config } from "./config/load.js";
+import {
+  ConfigError,
+  loadConfig,
+  type AccountConfig,
+  type Config,
+  type LoadedConfig,
+} from "./config/load.js";
 import { MemoryPersistence, type Persistence } from "./ledger/records.js";
 import { Metrics } from "./metrics.js";
 import { FallbackEpisodes } from "./notify/episodes.js";
@@ -16,6 +22,7 @@ import {
   webhookSink,
   type EventSink,
 } from "./notify/notifier.js";
+import { TargetHealth } from "./state/health.js";
 import { QuotaManager } from "./state/quota.js";
 import { PIN_IDLE_MS, PinStore } from "./routing/pins.js";
 import { ReasoningStore } from "./translate/artifacts.js";
@@ -24,12 +31,16 @@ import { HttpUpstreamClient, type UpstreamClient } from "./upstream/client.js";
 import { ToolExtrasStore } from "./upstream/tool-extras.js";
 
 export interface Runtime {
+  /** Replaced by a config reload. Read it when needed rather than keeping a copy. */
   config: Config;
+  /** Where the config was loaded from, when it can be reloaded. */
+  configPath?: string;
   log: Logger;
   now: () => number;
   instanceId: string;
   startedAt: number;
   quota: QuotaManager;
+  health: TargetHealth;
   budgets: BudgetManager;
   notifier: Notifier;
   episodes: FallbackEpisodes;
@@ -38,6 +49,7 @@ export interface Runtime {
   pins: PinStore;
   /** One signed-in session for each ChatGPT plan account. */
   chatgpt: Map<string, ChatGptSession>;
+  addChatGptSessions(accounts: Iterable<AccountConfig>): void;
   upstream: UpstreamClient;
   persistence: Persistence;
   /** Clients from the config file and from the dashboard. */
@@ -64,6 +76,7 @@ export interface RuntimeOptions {
   persistence?: Persistence;
   upstream?: UpstreamClient;
   sinks?: EventSink[];
+  configPath?: string;
   /** Where sign-ins are kept. */
   stateDir?: string;
   chatGptEndpoints?: ChatGptEndpoints;
@@ -113,7 +126,7 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
   );
 
   const isChatGptPlan = (accountId: string) =>
-    config.accounts.get(accountId)?.kind === "chatgpt_plan";
+    runtime.config.accounts.get(accountId)?.kind === "chatgpt_plan";
 
   const quota = new QuotaManager(now, persistence, (change) => {
     if (change.kind === "exhausted") {
@@ -144,35 +157,41 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
   const stateDir = options.stateDir ?? process.env.LLMR_STATE_DIR ?? "data";
   const endpoints = options.chatGptEndpoints ?? chatGptEndpoints();
   const chatgpt = new Map<string, ChatGptSession>();
-  for (const account of config.accounts.values()) {
-    if (account.kind !== "chatgpt_plan") continue;
-    chatgpt.set(
-      account.id,
-      new ChatGptSession({
-        file: credentialPath(stateDir, account.id),
-        endpoints,
-        now,
-        onSignInRequired: (code) => quota.disable(account.id, code),
-        onSignedIn: () => {
-          const wasBlocked = quota.reset(account.id) > 0;
-          notifier.clear("account_disabled", account.id);
-          notifier.clear("account_exhausted", account.id);
-          if (wasBlocked) {
-            notifier.emit("account_recovered", account.id, `${account.id} is signed in again.`);
-          }
-        },
-        onWarning: (message) => log.warn({ account: account.id }, message),
-      }),
-    );
-  }
+  const addChatGptSessions = (accounts: Iterable<AccountConfig>) => {
+    for (const account of accounts) {
+      if (account.kind !== "chatgpt_plan" || chatgpt.has(account.id)) continue;
+      chatgpt.set(
+        account.id,
+        new ChatGptSession({
+          file: credentialPath(stateDir, account.id),
+          endpoints,
+          now,
+          onSignInRequired: (code) => quota.disable(account.id, code),
+          onSignedIn: () => {
+            const wasBlocked = quota.reset(account.id) > 0;
+            notifier.clear("account_disabled", account.id);
+            notifier.clear("account_exhausted", account.id);
+            if (wasBlocked) {
+              notifier.emit("account_recovered", account.id, `${account.id} is signed in again.`);
+            }
+          },
+          onWarning: (message) => log.warn({ account: account.id }, message),
+        }),
+      );
+    }
+  };
+  addChatGptSessions(config.accounts.values());
 
-  return {
+  const runtime: Runtime = {
     config,
+    ...(options.configPath ? { configPath: options.configPath } : {}),
+    addChatGptSessions,
     log,
     now,
     instanceId,
     startedAt: now(),
     quota,
+    health: new TargetHealth(now),
     budgets: new BudgetManager(config.accounts, now, persistence),
     notifier,
     episodes: new FallbackEpisodes(notifier, now),
@@ -185,7 +204,7 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
     clients: new ClientRegistry(config.clients, persistence, now),
     metrics: new Metrics(),
     balances: new BalanceMonitor(
-      () => config.accounts.values(),
+      () => runtime.config.accounts.values(),
       notifier,
       now,
       (account, error) => log.warn({ account, err: error }, "balance check failed"),
@@ -196,6 +215,42 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
     edgeReports: new Map(),
     draining: false,
   };
+  return runtime;
+}
+
+export interface ConfigReload {
+  warnings: string[];
+  /** Settings that changed but only take effect after a restart. */
+  restartNeeded: string[];
+}
+
+/** Switches to a new config. Requests already running finish as planned. */
+export function applyConfig(runtime: Runtime, { config, warnings }: LoadedConfig): ConfigReload {
+  const previous = runtime.config;
+  const restartNeeded: string[] = [];
+  if (JSON.stringify(previous.server) !== JSON.stringify(config.server)) {
+    restartNeeded.push("server");
+  }
+  if (JSON.stringify(previous.notifications) !== JSON.stringify(config.notifications)) {
+    restartNeeded.push("notifications");
+  }
+  if (previous.timeouts.connectMs !== config.timeouts.connectMs) {
+    restartNeeded.push("timeouts.connect_s");
+  }
+  runtime.config = config;
+  runtime.clients.setConfigClients(config.clients);
+  runtime.budgets.setAccounts(config.accounts);
+  runtime.upstream.setConfig?.(config);
+  runtime.addChatGptSessions(config.accounts.values());
+  return { warnings, restartNeeded };
+}
+
+/** Reads the config file again. A bad file changes nothing and throws ConfigError. */
+export function reloadConfig(runtime: Runtime): ConfigReload {
+  if (!runtime.configPath) throw new ConfigError(["this gateway was not started from a file"]);
+  const result = applyConfig(runtime, loadConfig(runtime.configPath));
+  runtime.log.info({ restartNeeded: result.restartNeeded }, "configuration reloaded");
+  return result;
 }
 
 /** Loads saved quota state and this period's spend. */

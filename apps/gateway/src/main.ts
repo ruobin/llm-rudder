@@ -4,7 +4,7 @@ import { ConfigError, loadConfig } from "./config/load.js";
 import { MysqlPersistence } from "./db/mysql.js";
 import { MemoryPersistence, type Persistence } from "./ledger/records.js";
 import { runLedgerMaintenance } from "./ledger/usage.js";
-import { createLogger, createRuntime, restoreState } from "./runtime.js";
+import { createLogger, createRuntime, reloadConfig, restoreState } from "./runtime.js";
 
 const DEFAULT_DRAIN_S = 280;
 const PIN_CLEANUP_MS = 10 * 60_000;
@@ -39,7 +39,7 @@ async function main(): Promise<void> {
     persistence = new MemoryPersistence();
   }
 
-  const runtime = createRuntime(loaded.config, { log, persistence });
+  const runtime = createRuntime(loaded.config, { log, persistence, configPath });
   await restoreState(runtime);
   const app = buildApp(runtime);
   await app.listen({ host: loaded.config.server.host, port: loaded.config.server.port });
@@ -82,6 +82,14 @@ async function main(): Promise<void> {
     }
     process.exit(0);
   };
+  process.on("SIGHUP", () => {
+    try {
+      reloadConfig(runtime);
+    } catch (error) {
+      if (!(error instanceof ConfigError)) throw error;
+      log.error({ problems: error.problems }, "the new configuration was rejected");
+    }
+  });
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
 }

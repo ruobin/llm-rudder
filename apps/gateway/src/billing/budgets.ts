@@ -42,10 +42,14 @@ export class BudgetManager {
   private readonly reserved = new Map<string, number>();
 
   constructor(
-    private readonly accounts: Map<string, AccountConfig>,
+    private accounts: Map<string, AccountConfig>,
     private readonly now: () => number = Date.now,
     private readonly persistence?: SpendPersistence,
   ) {}
+
+  setAccounts(accounts: Map<string, AccountConfig>): void {
+    this.accounts = accounts;
+  }
 
   load(rows: SpendRow[]): void {
     for (const row of rows) this.spent.set(`${row.accountId}|${row.period}`, row.spentMicroUsd);

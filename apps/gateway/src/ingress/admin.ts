@@ -1,10 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { ClientConflictError } from "../auth/clients.js";
+import { ConfigError } from "../config/load.js";
 import { RouterError } from "../errors.js";
 import type { AttemptRecord, RequestRecord } from "../ledger/records.js";
 import { buildUsageReport, dayOf } from "../ledger/usage.js";
-import type { Runtime } from "../runtime.js";
+import { reloadConfig, type Runtime } from "../runtime.js";
 import { ACCOUNT_SCOPE } from "../state/quota.js";
 import { authenticateAdmin, authenticateMetrics } from "./auth.js";
 
@@ -168,6 +169,7 @@ export function buildSettings(runtime: Runtime) {
   const { config } = runtime;
   return {
     pricingVersion: config.pricing.version,
+    canReload: runtime.configPath !== undefined,
     routing: config.routing,
     timeouts: config.timeouts,
     retention: config.retention,
@@ -206,6 +208,15 @@ export function registerAdminRoutes(app: FastifyInstance, runtime: Runtime): voi
   app.get("/router/status", { onRequest }, async () => buildStatus(runtime));
 
   app.get("/router/settings", { onRequest }, async () => buildSettings(runtime));
+
+  app.post("/router/config/reload", { onRequest }, async (_request, reply) => {
+    try {
+      return { reloaded: true, ...reloadConfig(runtime) };
+    } catch (error) {
+      if (!(error instanceof ConfigError)) throw error;
+      return reply.code(422).send({ reloaded: false, problems: error.problems });
+    }
+  });
 
   app.post<{ Params: { id: string } }>(
     "/router/accounts/:id/reset",

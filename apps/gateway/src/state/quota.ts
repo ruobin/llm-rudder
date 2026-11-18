@@ -36,6 +36,7 @@ const FIRST_BACKOFF_S = 900;
 const MAX_BACKOFF_S = 14_400;
 const MAX_RATE_LIMIT_S = 300;
 const FIRST_ACCOUNT_PAUSE_S = 15;
+const FIRST_CIRCUIT_S = 30;
 
 const modelScope = (model: string) => `model:${model}`;
 const keyOf = (accountId: string, scope: string) => `${accountId}\u0000${scope}`;
@@ -165,12 +166,16 @@ export class QuotaManager {
       return;
     }
 
+    const circuit = this.read(accountId, model);
     const cooldown = (seconds: number, failures: number) =>
       this.write(accountId, model, {
         status: "cooldown",
         retryAt: now + seconds * 1000,
         failures,
         detail,
+        ...(circuit?.detail === "circuit_open" && circuit.backoffS
+          ? { backoffS: circuit.backoffS }
+          : {}),
       });
     const failureCount = () => (this.read(accountId, model)?.failures ?? 0) + 1;
 
@@ -289,6 +294,19 @@ export class QuotaManager {
     } else if (removed && limits.length === 0) {
       this.onChange?.({ kind: "recovered", accountId });
     }
+  }
+
+  /** Rests a target that keeps failing. After the wait, one request tests it. */
+  tripCircuit(target: Target): void {
+    const scope = modelScope(target.model);
+    const previous = this.read(target.accountId, scope)?.backoffS;
+    const backoffS = previous ? Math.min(previous * 2, MAX_RATE_LIMIT_S) : FIRST_CIRCUIT_S;
+    this.write(target.accountId, scope, {
+      status: "backoff",
+      retryAt: this.now() + backoffS * 1000,
+      backoffS,
+      detail: "circuit_open",
+    });
   }
 
   /** Stops using an account until someone fixes it. */

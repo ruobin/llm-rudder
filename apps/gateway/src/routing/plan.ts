@@ -106,6 +106,28 @@ function applyPin(plan: Plan, ctx: RequestContext, rt: Runtime): Plan {
   return plan;
 }
 
+/**
+ * Moves failing targets behind others of the same tier and cost class. The order you
+ * configured stands otherwise, so this never makes a request cost more.
+ */
+function healthiestFirst(targets: Target[], rt: Runtime): Target[] {
+  const classOf = (target: Target) =>
+    `${target.tier}\u0000${rt.config.accounts.get(target.accountId)?.costClass}`;
+  const result: Target[] = [];
+  for (let start = 0; start < targets.length;) {
+    const group = classOf(targets[start]!);
+    let end = start;
+    while (end < targets.length && classOf(targets[end]!) === group) end += 1;
+    const run = targets.slice(start, end);
+    result.push(
+      ...run.filter((target) => !rt.health.isDegraded(target.id)),
+      ...run.filter((target) => rt.health.isDegraded(target.id)),
+    );
+    start = end;
+  }
+  return result;
+}
+
 /** Expands a request into the ordered targets to try. */
 export function buildPlan(ctx: RequestContext, rt: Runtime): Plan {
   const { config } = rt;
@@ -141,6 +163,8 @@ export function buildPlan(ctx: RequestContext, rt: Runtime): Plan {
         ? [...all.filter((t) => !isMetered(t)), ...all.filter(isMetered)]
         : all;
   }
+
+  if (config.routing.healthOrder) ordered = healthiestFirst(ordered, rt);
 
   const steps: PlanStep[] = [];
   const skipped: SkippedTarget[] = [];

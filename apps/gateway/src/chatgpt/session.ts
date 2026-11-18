@@ -1,5 +1,6 @@
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import {
   accessTokenExpiry,
   CHATGPT_RESOURCE,
@@ -35,10 +36,53 @@ const chatGptDir = (stateDir: string) => join(stateDir, "chatgpt");
 export const credentialPath = (stateDir: string, accountId: string) =>
   join(chatGptDir(stateDir), `${accountId}.json`);
 
+/** The optional key that encrypts sign-ins on disk: 32 bytes, in base64. */
+export function stateKey(env: NodeJS.ProcessEnv = process.env): Buffer | null {
+  const encoded = env.LLMR_STATE_KEY;
+  if (!encoded) return null;
+  const key = Buffer.from(encoded, "base64");
+  if (key.length !== 32) throw new Error("LLMR_STATE_KEY must be 32 bytes in base64.");
+  return key;
+}
+
+interface SealedFile {
+  sealed: "A256GCM";
+  iv: string;
+  tag: string;
+  data: string;
+}
+
+/** Tying the file name to the data stops one sealed file standing in for another. */
+function seal(path: string, text: string, key: Buffer): SealedFile {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  cipher.setAAD(Buffer.from(basename(path)));
+  const data = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
+  return {
+    sealed: "A256GCM",
+    iv: iv.toString("base64"),
+    tag: cipher.getAuthTag().toString("base64"),
+    data: data.toString("base64"),
+  };
+}
+
+function unseal(path: string, file: SealedFile, key: Buffer): string {
+  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(file.iv, "base64"));
+  decipher.setAAD(Buffer.from(basename(path)));
+  decipher.setAuthTag(Buffer.from(file.tag, "base64"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(file.data, "base64")),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
 export function writePrivateJson(path: string, value: unknown): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = `${path}.${process.pid}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+  const text = JSON.stringify(value, null, 2);
+  const key = stateKey();
+  const content = key ? JSON.stringify(seal(path, text, key), null, 2) : text;
+  writeFileSync(temporary, `${content}\n`, { mode: 0o600 });
   chmodSync(temporary, 0o600);
   renameSync(temporary, path);
 }
@@ -80,7 +124,11 @@ export function importCredential(
 
 export function readCredential(path: string): ChatGptCredential | null {
   try {
-    return parseChatGptCredential(JSON.parse(readFileSync(path, "utf8")));
+    const stored = JSON.parse(readFileSync(path, "utf8")) as Partial<SealedFile>;
+    if (stored.sealed !== "A256GCM") return parseChatGptCredential(stored);
+    const key = stateKey();
+    if (!key) return null;
+    return parseChatGptCredential(JSON.parse(unseal(path, stored as SealedFile, key)));
   } catch {
     return null;
   }

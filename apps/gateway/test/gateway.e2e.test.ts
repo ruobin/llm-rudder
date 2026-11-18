@@ -755,7 +755,7 @@ describe("timeouts and recovery", () => {
   it("fails over when the first output takes too long", async () => {
     const yaml = BASE_CONFIG.replace(
       "keepalive_after_s: 30, keepalive_interval_s: 15",
-      "keepalive_after_s: 30, keepalive_interval_s: 15, commit_s: 0.1",
+      "keepalive_after_s: 30, keepalive_interval_s: 15, commit_s: 0.5",
     );
     const gateway = await startGateway({ yaml });
     gateway.upstream.script("f-one", { type: "stream", events: [], firstDelayMs: 2000 });

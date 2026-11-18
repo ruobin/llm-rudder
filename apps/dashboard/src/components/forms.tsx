@@ -6,9 +6,11 @@ import { useFormStatus } from "react-dom";
 import {
   createClientAction,
   login,
+  reloadConfigAction,
   revokeClientAction,
   type CreateClientState,
   type LoginState,
+  type ReloadState,
 } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -140,6 +142,28 @@ export function CreateClientForm({ accounts }: { accounts: string[] }) {
         </div>
       </form>
     </div>
+  );
+}
+
+export function ReloadConfigForm() {
+  const [state, action] = useActionState<ReloadState>(reloadConfigAction, {
+    message: null,
+    failed: false,
+  });
+  return (
+    <form action={action} className="flex flex-col items-end gap-2">
+      <Submit pendingText="Reloading…">Reload config</Submit>
+      {state.message ? (
+        <p
+          role={state.failed ? "alert" : "status"}
+          className={
+            state.failed ? "max-w-md text-sm text-critical" : "max-w-md text-sm text-secondary"
+          }
+        >
+          {state.message}
+        </p>
+      ) : null}
+    </form>
   );
 }
 

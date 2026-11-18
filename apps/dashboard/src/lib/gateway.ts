@@ -38,11 +38,14 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   const body = (await response.json().catch(() => null)) as {
     error?: { message?: string };
+    problems?: string[];
   } | null;
   if (!response.ok) {
     throw new GatewayError(
       response.status,
-      body?.error?.message ?? `The gateway answered with HTTP ${response.status}.`,
+      body?.problems?.join(" ") ??
+        body?.error?.message ??
+        `The gateway answered with HTTP ${response.status}.`,
     );
   }
   return body as T;
@@ -76,6 +79,11 @@ export function getRequests(filters: RequestFilters) {
 
 export const getRequest = (id: string) =>
   call<RequestItem & { attempts: AttemptItem[] }>(`/router/requests/${encodeURIComponent(id)}`);
+
+export const reloadGatewayConfig = () =>
+  call<{ warnings: string[]; restartNeeded: string[] }>("/router/config/reload", {
+    method: "POST",
+  });
 
 export const resetAccount = (id: string) =>
   call<{ cleared: number }>(`/router/accounts/${encodeURIComponent(id)}/reset`, { method: "POST" });

@@ -37,6 +37,8 @@ export interface UpstreamClient {
   ): Promise<UpstreamResponse>;
   sendAnthropic(account: AccountConfig, request: AnthropicRequest): Promise<UpstreamResponse>;
   sendResponses(account: AccountConfig, request: ResponsesRequest): Promise<UpstreamResponse>;
+  /** Applies new timeouts to later requests. */
+  setConfig?(config: Config): void;
   close(): Promise<void>;
 }
 
@@ -45,7 +47,7 @@ export class HttpUpstreamClient implements UpstreamClient {
   private readonly agent: Agent;
 
   constructor(
-    private readonly config: Config,
+    private config: Config,
     private readonly instanceId: string,
   ) {
     this.agent = new Agent({
@@ -53,6 +55,10 @@ export class HttpUpstreamClient implements UpstreamClient {
       keepAliveTimeout: 30_000,
       connections: 128,
     });
+  }
+
+  setConfig(config: Config): void {
+    this.config = config;
   }
 
   async sendChat(
