@@ -152,6 +152,7 @@ export class Metrics {
       ]),
     );
     const accounts = [...config.accounts.keys()];
+    const { heapUsed, external } = process.memoryUsage();
     const lines = [
       ...this.requests.render(),
       ...this.attempts.render(),
@@ -184,6 +185,9 @@ export class Metrics {
       ]),
       ...gauge("llmr_memory_rss_bytes", "Memory used by the gateway process.", [
         [{}, process.memoryUsage.rss()],
+      ]),
+      ...gauge("llmr_memory_heap_bytes", "JavaScript and buffer memory in use.", [
+        [{}, heapUsed + external],
       ]),
     ];
     return `${lines.join("\n")}\n`;

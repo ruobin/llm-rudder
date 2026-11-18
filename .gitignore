@@ -17,5 +17,9 @@ data/
 # Private notes that stay on your computer
 docs/private/
 
+# Backups and deployment state on a server
+backups/
+.deployed-version
+
 # Logs
 *.log

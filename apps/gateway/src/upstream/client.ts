@@ -42,6 +42,9 @@ export interface UpstreamClient {
   close(): Promise<void>;
 }
 
+/** Each open stream holds a connection, so this limits streams per provider. */
+const MAX_CONNECTIONS_PER_ORIGIN = 2000;
+
 /** Sends requests to upstreams with one connection pool per origin. */
 export class HttpUpstreamClient implements UpstreamClient {
   private readonly agent: Agent;
@@ -53,7 +56,7 @@ export class HttpUpstreamClient implements UpstreamClient {
     this.agent = new Agent({
       connect: { timeout: config.timeouts.connectMs },
       keepAliveTimeout: 30_000,
-      connections: 128,
+      connections: MAX_CONNECTIONS_PER_ORIGIN,
     });
   }
 

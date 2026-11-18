@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import {
   CHATGPT_DEFAULT_ACCOUNT,
   chatGptEndpoints,
@@ -8,6 +10,7 @@ import {
 } from "@llm-rudder/shared";
 import { generateKey } from "./auth/keys.js";
 import { hashPassword } from "./auth/password.js";
+import { openBackup, sealBackup } from "./backup.js";
 import {
   credentialPath,
   ensureHostId,
@@ -21,6 +24,8 @@ const usage = `Usage:
   cli keygen [NAME ...]    Print new keys, one per name, in .env format
   cli check-config [PATH]  Validate a config file (default: config/config.yaml)
   cli dashboard-secrets    Print dashboard settings for .env, and its password to stderr
+  cli backup-seal          Encrypt standard input with LLMR_BACKUP_PASSPHRASE
+  cli backup-open          Decrypt standard input with LLMR_BACKUP_PASSPHRASE
   cli chatgpt host-id      Create or show this machine's ChatGPT host ID
   cli chatgpt import       Save a sign-in read from standard input
   cli chatgpt status       Show the saved sign-in, without its tokens
@@ -115,6 +120,15 @@ if (command === "keygen") {
   keygen(args);
 } else if (command === "check-config") {
   process.exitCode = checkConfig(args[0] ?? process.env.LLMR_CONFIG ?? "config/config.yaml");
+} else if (command === "backup-seal" || command === "backup-open") {
+  const passphrase = process.env.LLMR_BACKUP_PASSPHRASE ?? "";
+  const transform = command === "backup-seal" ? sealBackup : openBackup;
+  try {
+    await pipeline(Readable.from(transform(process.stdin, passphrase)), process.stdout);
+  } catch (error) {
+    console.error((error as Error).message);
+    process.exitCode = 1;
+  }
 } else if (command === "dashboard-secrets") {
   const password = randomBytes(18).toString("base64url");
   console.log(`LLMR_DASHBOARD_PASSWORD_HASH=${await hashPassword(password)}`);

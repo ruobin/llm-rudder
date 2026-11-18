@@ -1,0 +1,8 @@
+# Uses published images instead of building on the server. See deploy/update.sh.
+services:
+  gateway:
+    image: ghcr.io/ruobin/llm-rudder-gateway:${LLMR_VERSION:-latest}
+    build: !reset null
+  dashboard:
+    image: ghcr.io/ruobin/llm-rudder-dashboard:${LLMR_VERSION:-latest}
+    build: !reset null

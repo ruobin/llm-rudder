@@ -19,6 +19,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
+    "load-test": "tsx --conditions=@llm-rudder/source dev/load-test.ts",
     "smoke:codex": "tsx --conditions=@llm-rudder/source dev/codex-smoke.ts",
     "smoke:clients": "tsx --conditions=@llm-rudder/source dev/clients-smoke.ts"
   },
