@@ -60,6 +60,8 @@ const accountSchema = z
     trust: z.enum(["first_party", "self_hosted", "third_party"]).default("third_party"),
     enabled: z.boolean().default(true),
     budget: budgetSchema.optional(),
+    /** Warns when a New API or OpenRouter key has less than this left. */
+    balance: z.strictObject({ warn_below_usd: z.number().positive() }).optional(),
   })
   .refine(
     (a) => a.kind !== "http" || (a.base_url === undefined) !== (a.base_url_env === undefined),
@@ -101,7 +103,11 @@ export const configSchema = z.strictObject({
       max_body_mb: z.number().positive().default(32),
     })
     .prefault({}),
-  admin: z.strictObject({ key_env: envName }),
+  admin: z.strictObject({
+    key_env: envName,
+    /** A key that can read /metrics and nothing else. */
+    metrics_key_env: envName.optional(),
+  }),
   clients: z.array(clientSchema).min(1),
   accounts: z.record(id, accountSchema),
   tiers: z.record(id, tierSchema),
@@ -128,6 +134,8 @@ export const configSchema = z.strictObject({
     .strictObject({
       ntfy_url_env: envName.optional(),
       webhook_url_env: envName.optional(),
+      telegram_bot_token_env: envName.optional(),
+      telegram_chat_id_env: envName.optional(),
       repeat_after_s: positiveSeconds.default(3600),
     })
     .prefault({}),

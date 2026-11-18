@@ -33,6 +33,7 @@ export interface AccountConfig {
   trust: Trust;
   enabled: boolean;
   budget: { dailyMicroUsd?: number; monthlyMicroUsd?: number } | null;
+  balanceWarnUsd?: number;
 }
 
 export interface TierConfig {
@@ -65,6 +66,7 @@ export interface Pricing {
 export interface Config {
   server: { host: string; port: number; trustProxy: boolean; maxBodyBytes: number };
   adminKeyHash: Buffer;
+  metricsKeyHash?: Buffer;
   clients: ClientConfig[];
   accounts: Map<string, AccountConfig>;
   tiers: Map<string, TierConfig>;
@@ -78,7 +80,12 @@ export interface Config {
     keepaliveAfterMs: number;
     keepaliveIntervalMs: number;
   };
-  notifications: { ntfyUrl?: string; webhookUrl?: string; repeatAfterMs: number };
+  notifications: {
+    ntfyUrl?: string;
+    webhookUrl?: string;
+    telegram?: { botToken: string; chatId: string };
+    repeatAfterMs: number;
+  };
   retention: { ledgerDays: number; eventsDays: number };
   edge?: { planAccount: string; planModels: Map<string, string>; reportIntervalS: number };
   pricing: Pricing;
@@ -191,6 +198,9 @@ export function buildConfig(
   };
 
   const adminKey = requireKey(raw.admin.key_env, "admin");
+  const metricsKey = raw.admin.metrics_key_env
+    ? requireKey(raw.admin.metrics_key_env, "admin.metrics_key_env")
+    : undefined;
 
   const seenClientIds = new Set<string>();
   const seenKeys = new Set<string>(adminKey ? [adminKey] : []);
@@ -234,6 +244,9 @@ export function buildConfig(
     }
     const base: CompatProfile = COMPAT_PROFILES[account.compat];
     const overrides = account.compat_overrides ?? {};
+    if (account.balance && !["new_api", "openrouter"].includes(account.compat)) {
+      problems.push(`${where}: balance checks need the new_api or openrouter compat profile`);
+    }
     if (account.cost_class === "metered" && !account.budget) {
       warnings.push(`${where}: metered account has no budget`);
     }
@@ -258,6 +271,7 @@ export function buildConfig(
       costClass: account.cost_class,
       trust: account.trust,
       enabled: account.enabled,
+      ...(account.balance ? { balanceWarnUsd: account.balance.warn_below_usd } : {}),
       budget: account.budget
         ? {
             ...(account.budget.daily_usd === undefined
@@ -357,8 +371,21 @@ export function buildConfig(
   const notifications = raw.notifications;
   const ntfyUrl = notifications.ntfy_url_env ? env[notifications.ntfy_url_env] : undefined;
   const webhookUrl = notifications.webhook_url_env ? env[notifications.webhook_url_env] : undefined;
-  if (!ntfyUrl && !webhookUrl) {
-    warnings.push("notifications: no ntfy or webhook URL is set, so push warnings are off");
+  if (
+    Boolean(notifications.telegram_bot_token_env) !== Boolean(notifications.telegram_chat_id_env)
+  ) {
+    throw new ConfigError(["notifications: set both Telegram settings, or neither"]);
+  }
+  const telegramToken = notifications.telegram_bot_token_env
+    ? env[notifications.telegram_bot_token_env]
+    : undefined;
+  const telegramChat = notifications.telegram_chat_id_env
+    ? env[notifications.telegram_chat_id_env]
+    : undefined;
+  const telegram =
+    telegramToken && telegramChat ? { botToken: telegramToken, chatId: telegramChat } : undefined;
+  if (!ntfyUrl && !webhookUrl && !telegram) {
+    warnings.push("notifications: no ntfy, webhook or Telegram is set, so push warnings are off");
   }
 
   return {
@@ -371,6 +398,7 @@ export function buildConfig(
         maxBodyBytes: Math.round(raw.server.max_body_mb * 1024 * 1024),
       },
       adminKeyHash: hashKey(adminKey),
+      ...(metricsKey ? { metricsKeyHash: hashKey(metricsKey) } : {}),
       clients,
       accounts,
       tiers,
@@ -392,6 +420,7 @@ export function buildConfig(
         repeatAfterMs: seconds(notifications.repeat_after_s),
         ...(ntfyUrl ? { ntfyUrl } : {}),
         ...(webhookUrl ? { webhookUrl } : {}),
+        ...(telegram ? { telegram } : {}),
       },
       retention: {
         ledgerDays: raw.retention.ledger_days,

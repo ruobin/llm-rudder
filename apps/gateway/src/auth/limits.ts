@@ -49,6 +49,12 @@ export class ClientLimits {
 
   constructor(private readonly now: () => number = Date.now) {}
 
+  activeRequests(): number {
+    let total = 0;
+    for (const entry of this.state.values()) total += entry.active;
+    return total;
+  }
+
   acquire(client: ClientConfig): () => void {
     const now = this.now();
     let entry = this.state.get(client.id);

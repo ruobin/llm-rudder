@@ -57,6 +57,7 @@ export default async function SettingsPage() {
               <Row label="Pricing version">{settings.pricingVersion}</Row>
               <Row label="ntfy">{onOff(notifications.ntfy)}</Row>
               <Row label="Webhook">{onOff(notifications.webhook)}</Row>
+              <Row label="Telegram">{onOff(notifications.telegram)}</Row>
             </dl>
           </CardContent>
         </Card>

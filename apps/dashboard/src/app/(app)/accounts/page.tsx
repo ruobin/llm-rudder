@@ -34,6 +34,9 @@ function Budget({ label, spent, limit }: { label: string; spent?: number; limit?
   );
 }
 
+const low = ({ usd, warnBelowUsd }: { usd: number; warnBelowUsd?: number }) =>
+  warnBelowUsd !== undefined && usd < warnBelowUsd;
+
 export default async function AccountsPage() {
   const status = await getStatus();
   const now = Date.now();
@@ -76,6 +79,16 @@ export default async function AccountsPage() {
                     ? {}
                     : { limit: account.spend.monthLimitUsd })}
                 />
+                {account.balance ? (
+                  <p
+                    className={cn("text-xs text-secondary", low(account.balance) && "text-serious")}
+                  >
+                    Balance {formatUsd(account.balance.usd)}
+                    {account.balance.warnBelowUsd === undefined
+                      ? ""
+                      : `, warning below ${formatUsd(account.balance.warnBelowUsd)}`}
+                  </p>
+                ) : null}
                 {account.limits.length > 0 ? (
                   <ul className="flex flex-col gap-1.5">
                     {account.limits.map((limit) => (

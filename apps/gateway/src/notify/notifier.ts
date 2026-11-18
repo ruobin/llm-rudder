@@ -6,6 +6,7 @@ export type EventKind =
   | "account_recovered"
   | "account_disabled"
   | "budget_reached"
+  | "balance_low"
   | "metered_first_use";
 
 export interface RouterEvent {
@@ -52,6 +53,31 @@ export function webhookSink(url: string): EventSink {
       body: JSON.stringify({ ...event, at: new Date(event.at).toISOString() }),
       signal: AbortSignal.timeout(SINK_TIMEOUT_MS),
     });
+  };
+}
+
+const TELEGRAM_API = "https://api.telegram.org";
+
+export function telegramSink(botToken: string, chatId: string, apiUrl = TELEGRAM_API): EventSink {
+  return async (event) => {
+    let ok = false;
+    try {
+      const response = await fetch(`${apiUrl}/bot${botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: `llm-rudder: ${event.message}`,
+          disable_web_page_preview: true,
+        }),
+        signal: AbortSignal.timeout(SINK_TIMEOUT_MS),
+      });
+      ok = response.ok;
+    } catch {
+      ok = false;
+    }
+    // The address holds the bot token, so errors must not carry it into the logs.
+    if (!ok) throw new Error("Telegram did not accept the notification.");
   };
 }
 

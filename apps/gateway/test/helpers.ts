@@ -233,6 +233,7 @@ export async function startGateway(options: GatewayOptions = {}): Promise<TestGa
       OPENAI_KEY: "upstream-openai-key",
       GEMINI_KEY: "upstream-gemini-key",
       LLMR_CHATGPT_API_URL: upstream.url,
+      ...(process.env.METRICS_KEY ? { METRICS_KEY: process.env.METRICS_KEY } : {}),
     },
     options.models,
   );

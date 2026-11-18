@@ -39,6 +39,7 @@ export interface AccountStatus {
   state: string;
   limits: AccountLimit[];
   spend: { dayUsd?: number; monthUsd?: number; dayLimitUsd?: number; monthLimitUsd?: number };
+  balance?: { usd: number; checkedAt?: string; warnBelowUsd?: number };
 }
 
 export interface ChatGptStatus {
@@ -155,7 +156,7 @@ export interface GatewaySettings {
   routing: { maxAttemptsPerTier: number; deadlineMs: number; preferSameFormat: boolean };
   timeouts: Record<string, number>;
   retention: { ledgerDays: number; eventsDays: number };
-  notifications: { ntfy: boolean; webhook: boolean; repeatAfterMs: number };
+  notifications: { ntfy: boolean; webhook: boolean; telegram: boolean; repeatAfterMs: number };
   aliases: { match: string; tier: string }[];
   tiers: {
     name: string;

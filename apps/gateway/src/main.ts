@@ -10,6 +10,7 @@ const DEFAULT_DRAIN_S = 280;
 const PIN_CLEANUP_MS = 10 * 60_000;
 const CHATGPT_UPKEEP_MS = 15 * 60_000;
 const LEDGER_MAINTENANCE_MS = 60 * 60_000;
+const BALANCE_CHECK_MS = 15 * 60_000;
 
 async function main(): Promise<void> {
   const log = createLogger();
@@ -55,6 +56,9 @@ async function main(): Promise<void> {
   const maintainLedger = () => void runLedgerMaintenance(runtime);
   maintainLedger();
   setInterval(maintainLedger, LEDGER_MAINTENANCE_MS).unref();
+
+  void runtime.balances.check();
+  setInterval(() => void runtime.balances.check(), BALANCE_CHECK_MS).unref();
 
   let stopping = false;
   const shutdown = async (signal: string) => {

@@ -45,6 +45,21 @@ export function authenticateAdmin(request: FastifyRequest, runtime: Runtime): vo
   throw invalidKey();
 }
 
+/** Accepts the admin key, or the key that can only read metrics. */
+export function authenticateMetrics(request: FastifyRequest, runtime: Runtime): void {
+  checkThrottle(request, runtime);
+  const key = extractKey(request.headers);
+  if (key !== null) {
+    const presented = hashKey(key);
+    const { adminKeyHash, metricsKeyHash } = runtime.config;
+    const admin = keysMatch(presented, adminKeyHash);
+    const metrics = metricsKeyHash ? keysMatch(presented, metricsKeyHash) : false;
+    if (admin || metrics) return;
+  }
+  runtime.authThrottle.recordFailure(request.ip);
+  throw invalidKey();
+}
+
 /** Authenticates before the body is read, so unauthenticated uploads are refused early. */
 export function clientAuthHook(runtime: Runtime) {
   return async (request: FastifyRequest): Promise<void> => {

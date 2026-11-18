@@ -709,7 +709,7 @@ class RequestRun {
     const { rt, ctx, plan } = this;
     const finishedAt = rt.now();
     const step = this.servedStep;
-    rt.persistence.saveLedger({
+    const entry = {
       request: {
         id: ctx.requestId,
         startedAt: ctx.startedAt,
@@ -726,7 +726,9 @@ class RequestRun {
         attemptCount: this.attempts.length,
       },
       attempts: this.attempts,
-    });
+    };
+    rt.persistence.saveLedger(entry);
+    rt.metrics.observe(entry);
     rt.log.info(
       {
         requestId: ctx.requestId,

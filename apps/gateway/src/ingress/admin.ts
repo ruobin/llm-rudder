@@ -6,7 +6,7 @@ import type { AttemptRecord, RequestRecord } from "../ledger/records.js";
 import { buildUsageReport, dayOf } from "../ledger/usage.js";
 import type { Runtime } from "../runtime.js";
 import { ACCOUNT_SCOPE } from "../state/quota.js";
-import { authenticateAdmin } from "./auth.js";
+import { authenticateAdmin, authenticateMetrics } from "./auth.js";
 
 const DAY_MS = 86_400_000;
 const clientId = z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/, "must be a lowercase identifier");
@@ -115,6 +115,7 @@ export function buildStatus(runtime: Runtime) {
     })),
     accounts: [...config.accounts.values()].map((account) => {
       const spend = budgets.snapshot(account.id);
+      const balance = runtime.balances.current().get(account.id);
       const states = quotaEntries.filter((entry) => entry.accountId === account.id);
       return {
         id: account.id,
@@ -139,6 +140,17 @@ export function buildStatus(runtime: Runtime) {
           dayLimitUsd: usd(spend.dayLimitMicroUsd),
           monthLimitUsd: usd(spend.monthLimitMicroUsd),
         },
+        ...(balance
+          ? {
+              balance: {
+                usd: balance.usd,
+                checkedAt: iso(balance.checkedAt),
+                ...(account.balanceWarnUsd === undefined
+                  ? {}
+                  : { warnBelowUsd: account.balanceWarnUsd }),
+              },
+            }
+          : {}),
       };
     }),
     edges: [...runtime.edgeReports].map(([client, report]) => ({
@@ -162,6 +174,7 @@ export function buildSettings(runtime: Runtime) {
     notifications: {
       ntfy: Boolean(config.notifications.ntfyUrl),
       webhook: Boolean(config.notifications.webhookUrl),
+      telegram: Boolean(config.notifications.telegram),
       repeatAfterMs: config.notifications.repeatAfterMs,
     },
     aliases: config.aliases.map(({ match, tier }) => ({ match, tier })),
@@ -176,6 +189,19 @@ export function buildSettings(runtime: Runtime) {
 
 export function registerAdminRoutes(app: FastifyInstance, runtime: Runtime): void {
   const onRequest = admin(runtime);
+
+  app.get(
+    "/metrics",
+    {
+      onRequest: async (request) => {
+        authenticateMetrics(request, runtime);
+      },
+    },
+    async (_request, reply) =>
+      reply
+        .header("content-type", "text/plain; version=0.0.4; charset=utf-8")
+        .send(runtime.metrics.render(runtime)),
+  );
 
   app.get("/router/status", { onRequest }, async () => buildStatus(runtime));
 

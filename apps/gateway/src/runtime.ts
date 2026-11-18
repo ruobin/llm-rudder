@@ -7,11 +7,19 @@ import { BudgetManager, dayPeriod, monthPeriod } from "./billing/budgets.js";
 import { ChatGptSession, credentialPath, SIGN_IN_COMMAND } from "./chatgpt/session.js";
 import type { Config } from "./config/load.js";
 import { MemoryPersistence, type Persistence } from "./ledger/records.js";
+import { Metrics } from "./metrics.js";
 import { FallbackEpisodes } from "./notify/episodes.js";
-import { Notifier, ntfySink, webhookSink, type EventSink } from "./notify/notifier.js";
+import {
+  Notifier,
+  ntfySink,
+  telegramSink,
+  webhookSink,
+  type EventSink,
+} from "./notify/notifier.js";
 import { QuotaManager } from "./state/quota.js";
 import { PIN_IDLE_MS, PinStore } from "./routing/pins.js";
 import { ReasoningStore } from "./translate/artifacts.js";
+import { BalanceMonitor } from "./upstream/balance.js";
 import { HttpUpstreamClient, type UpstreamClient } from "./upstream/client.js";
 import { ToolExtrasStore } from "./upstream/tool-extras.js";
 
@@ -34,6 +42,8 @@ export interface Runtime {
   persistence: Persistence;
   /** Clients from the config file and from the dashboard. */
   clients: ClientRegistry;
+  metrics: Metrics;
+  balances: BalanceMonitor;
   limits: ClientLimits;
   authThrottle: FailedAuthThrottle;
   meteredSeen: Set<string>;
@@ -90,6 +100,9 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
   const sinks: EventSink[] = options.sinks ?? [
     ...(config.notifications.ntfyUrl ? [ntfySink(config.notifications.ntfyUrl)] : []),
     ...(config.notifications.webhookUrl ? [webhookSink(config.notifications.webhookUrl)] : []),
+    ...(config.notifications.telegram
+      ? [telegramSink(config.notifications.telegram.botToken, config.notifications.telegram.chatId)]
+      : []),
   ];
   const notifier = new Notifier(
     sinks,
@@ -170,6 +183,13 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
     upstream: options.upstream ?? new HttpUpstreamClient(config, instanceId),
     persistence,
     clients: new ClientRegistry(config.clients, persistence, now),
+    metrics: new Metrics(),
+    balances: new BalanceMonitor(
+      () => config.accounts.values(),
+      notifier,
+      now,
+      (account, error) => log.warn({ account, err: error }, "balance check failed"),
+    ),
     limits: new ClientLimits(now),
     authThrottle: new FailedAuthThrottle(now),
     meteredSeen: new Set(),
