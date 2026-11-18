@@ -1,0 +1,100 @@
+# Copy to config/config.yaml and edit. Secrets stay in .env; this file only names them.
+version: 1
+
+server:
+  host: 0.0.0.0
+  port: 4141
+  trust_proxy: true # the gateway runs behind Caddy or Nginx
+  max_body_mb: 32
+
+admin:
+  key_env: LLMR_ADMIN_KEY
+
+# One key per client, so each can be limited or revoked on its own.
+# notice: text adds a one-line note to the reply when a tier falls back.
+clients:
+  - { id: opencode, key_env: LLMR_KEY_OPENCODE, notice: text }
+  - { id: pi, key_env: LLMR_KEY_PI, notice: text }
+  - { id: chat-ui, key_env: LLMR_KEY_CHAT_UI, notice: text }
+  - { id: scripts, key_env: LLMR_KEY_SCRIPTS, notice: none, rpm: 120 }
+
+accounts:
+  # Any OpenAI-compatible gateway. compat can be new_api, openrouter or generic.
+  my-gateway:
+    base_url_env: MY_GATEWAY_BASE_URL
+    api_key_env: MY_GATEWAY_API_KEY
+    compat: new_api
+    cost_class: prepaid
+    trust: self_hosted
+
+  # Set monthly_usd to your Google AI plan's developer credit: 10, 40 or 100.
+  gemini-key:
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: GEMINI_API_KEY
+    compat: gemini
+    cost_class: metered
+    trust: first_party
+    budget: { monthly_usd: 10 }
+
+  openai-key:
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    compat: openai
+    cost_class: metered
+    trust: first_party
+    budget: { daily_usd: 5, monthly_usd: 50 }
+
+# Targets are tried in order. Replace the my-gateway models with ones your gateway serves.
+tiers:
+  frontier:
+    fallback_tiers: [medium, flash]
+    prefer: quality # quality: use metered targets before falling back; cost: fall back first
+    context_window: 200000
+    targets:
+      - { account: my-gateway, model: claude-opus-5-5 }
+      - { account: openai-key, model: gpt-6-astra, params: { reasoning_effort: high } }
+      - { account: gemini-key, model: gemini-4-carbon }
+  medium:
+    fallback_tiers: [flash]
+    prefer: quality
+    context_window: 200000
+    targets:
+      - { account: gemini-key, model: gemini-4-hydrogen }
+      - { account: my-gateway, model: claude-sonnet-5-5 }
+      - { account: openai-key, model: gpt-6.1-sol }
+  flash:
+    fallback_tiers: [medium]
+    prefer: quality
+    context_window: 200000
+    targets:
+      - { account: gemini-key, model: gemini-3.5-flash-lite }
+      - { account: openai-key, model: gpt-6-luna }
+      - { account: my-gateway, model: claude-haiku-5-5 }
+
+aliases:
+  - { match: "claude-opus-*", tier: frontier }
+  - { match: "claude-fable-*", tier: frontier }
+  - { match: "claude-sonnet-*", tier: medium }
+  - { match: "claude-haiku-*", tier: flash }
+  - { match: strong, tier: frontier }
+  - { match: balanced, tier: medium }
+  - { match: fast, tier: flash }
+
+routing:
+  max_attempts_per_tier: 3
+  deadline_s: 900 # time allowed to reach the first model output
+
+timeouts:
+  connect_s: 10
+  first_byte_s: 120
+  commit_s: 300
+  stream_idle_s: 300
+  keepalive_after_s: 20
+  keepalive_interval_s: 15
+
+notifications:
+  ntfy_url_env: LLMR_NTFY_URL
+  webhook_url_env: LLMR_WEBHOOK_URL
+  repeat_after_s: 3600
+
+pricing_file: pricing.yaml

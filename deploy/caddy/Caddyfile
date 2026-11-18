@@ -1,0 +1,22 @@
+{$LLMR_DOMAIN} {
+	# Only the public API is exposed. Use an SSH tunnel for /router/*.
+	@public path /v1/* /healthz
+	handle @public {
+		request_body {
+			max_size 32MB
+		}
+		reverse_proxy gateway:4141 {
+			# Send stream events as soon as they arrive.
+			flush_interval -1
+		}
+	}
+	handle {
+		respond 404
+	}
+}
+
+{$LLMR_CHAT_DOMAIN:chat.localhost} {
+	reverse_proxy open-webui:8080 {
+		flush_interval -1
+	}
+}

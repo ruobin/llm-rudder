@@ -1,0 +1,94 @@
+name: llm-router
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    image: llm-router-gateway:local
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    environment:
+      DATABASE_URL: mysql://llmr:${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}@mysql:3306/llm_router
+    volumes:
+      - ./config:/app/config:ro
+    ports:
+      # Only reachable from this host. Caddy or Nginx handles public traffic.
+      - 127.0.0.1:${LLMR_PORT:-4141}:4141
+    depends_on:
+      mysql:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Lets active streams finish during an update.
+    stop_grace_period: 5m
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: llm_router
+      MYSQL_USER: llmr
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  # Use on a fresh VPS: docker compose --profile caddy up -d
+  caddy:
+    image: caddy:2-alpine
+    profiles: [caddy]
+    restart: unless-stopped
+    environment:
+      LLMR_DOMAIN: ${LLMR_DOMAIN:-}
+      LLMR_CHAT_DOMAIN: ${LLMR_CHAT_DOMAIN:-}
+    ports:
+      - 80:80
+      - 443:443
+      - 443:443/udp
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - gateway
+
+  # Optional chat UI: docker compose --profile chat up -d
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:v0.13.3
+    profiles: [chat]
+    restart: unless-stopped
+    environment:
+      OPENAI_API_BASE_URL: http://gateway:4141/v1
+      OPENAI_API_KEY: ${LLMR_KEY_CHAT_UI:-}
+      ENABLE_OLLAMA_API: "false"
+      # Sends the chat ID, so the gateway can recognize each conversation.
+      ENABLE_FORWARD_USER_INFO_HEADERS: "true"
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-}
+    ports:
+      - 127.0.0.1:${LLMR_CHAT_PORT:-3000}:8080
+    volumes:
+      - open-webui-data:/app/backend/data
+    depends_on:
+      - gateway
+
+volumes:
+  mysql-data:
+  caddy-data:
+  caddy-config:
+  open-webui-data:
