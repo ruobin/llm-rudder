@@ -1,10 +1,11 @@
 # llm-rudder — Design
 
-|           |                                                                                                                                  |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Status    | Draft 2, updated 2026-11-18 with Phases 1 to 4 as built. It replaces the local-first Python Draft 1, which stays in git history. |
-| Scope     | A personal model gateway on your own VPS, with a phased path to a production-grade service                                       |
-| Work plan | [`TODO.md`](TODO.md) splits the work into phases with checklists and exit criteria.                                              |
+|            |                                                                                                                                  |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Status     | Draft 2, updated 2026-11-18 with Phases 1 to 4 as built. It replaces the local-first Python Draft 1, which stays in git history. |
+| Scope      | A personal model gateway on your own VPS, with a phased path to a production-grade service                                       |
+| Deployment | [`DEPLOYMENT.md`](DEPLOYMENT.md) has the tested steps for installing and operating it.                                           |
+| Work plan  | [`TODO.md`](TODO.md) splits the work into phases with checklists and exit criteria.                                              |
 
 **In one sentence:** llm-rudder is one HTTPS endpoint on your VPS that turns `frontier`, `medium` and `flash` into real models across your subscriptions, API keys and third-party gateways, moves to the next option when one runs out, and warns you when it has to drop to a lower tier.
 
@@ -1148,7 +1149,7 @@ sequenceDiagram
 
 **Requests.** Every request is rewritten, including those from Responses clients, because the plan has its own rules. It always sets `store: false` and `stream: true`, sends instructions as developer messages, and leaves out `max_output_tokens`, `temperature` and `top_p`. Client tools go in one namespace called `tools`, which is removed from the calls clients receive. A forced tool becomes the only tool offered, with `tool_choice: required`, because `tool_choice` cannot name a namespaced tool. A client that did not ask to stream gets one response assembled from the stream, and only `response.completed` or `response.incomplete` counts as an ending.
 
-**Seen on the real service (2026-11-18).** The stream arrives without a `content-type` header, so the plan's responses are always read as a stream. Function calls come back with `namespace: "tools"`, and a follow-up that sends them back is accepted. The request ID is in `x-oai-request-id`, and streams can include a `response.metadata` event, which the gateway ignores.
+**Seen on the real service (2026-11-18).** The stream arrives without a `content-type` header, so the plan's responses are always read as a stream. Function calls come back with `namespace: "tools"`, and a follow-up that sends them back is accepted. The request ID is in `x-oai-request-id`, and streams can include a `response.metadata` event, which the gateway ignores. For a one-hour token, `earliest_refresh_at` was about 54 minutes after issue. A real refresh on the VPS returned a new refresh token, and it kept working after a restart.
 
 **Routing.** The plan keeps its configured place in a tier even though most clients speak another format. It is skipped when nobody is signed in, when its model list lacks the model, and for requests that need stored state, files uploaded by ID, or hosted tools other than web search.
 
@@ -1408,20 +1409,7 @@ These are starting points. The gateway mostly waits on the network.
 
 ### 9.3 First deployment
 
-```bash
-git clone https://github.com/ruobin/llm-rudder.git /opt/llm-rudder && cd /opt/llm-rudder
-cp .env.example .env && chmod 600 .env
-cp config/config.example.yaml config/config.yaml
-
-docker compose build gateway
-docker compose run --rm --no-deps gateway node dist/cli.js keygen \
-  LLMR_ADMIN_KEY LLMR_KEY_OPENCODE LLMR_KEY_PI LLMR_KEY_CHAT_UI LLMR_KEY_SCRIPTS
-# Put the keys, provider credentials and database passwords in .env, then edit config.yaml.
-
-docker compose run --rm --no-deps gateway node dist/cli.js check-config
-docker compose --profile caddy up -d    # add --profile chat for Open WebUI
-curl https://llm.example.com/healthz
-```
+The tested steps are in [`DEPLOYMENT.md`](DEPLOYMENT.md). Database passwords go into `.env` before the first build, because Docker Compose reads them even then. Remove the accounts you do not use, because every account left in the config needs its URL and key.
 
 **If the VPS already runs Nginx**, as your New API host does, skip the `caddy` profile and use `deploy/nginx/llm-rudder.conf.example`. Streaming needs these settings:
 
@@ -1454,7 +1442,7 @@ Migrations run at startup, are additive, and are compatible with the previous re
 
 ### 9.5 Backups
 
-- A nightly `mysqldump`, compressed and copied off the VPS.
+- Planned for Phase 5: a nightly `mysqldump`, compressed and copied off the VPS. Until then, use the manual commands in [`DEPLOYMENT.md`](DEPLOYMENT.md#8-what-to-back-up).
 - `config/` is in version control. `.env` is stored in your password manager.
 - The state volume holds the ChatGPT sign-in. Leave it out of backups. If it is lost, sign in again.
 - Restore is tested once per phase.

@@ -2,7 +2,7 @@
 
 A personal LLM gateway. Clients ask for `frontier`, `medium` or `flash`. The gateway picks a real model from your API keys and OpenAI-compatible gateways, moves to the next one when a target fails or runs out of quota, and drops to another tier with a warning instead of failing the task.
 
-**Status: Phases 1 to 4 are built.** The gateway serves the OpenAI Chat Completions and Responses APIs and Anthropic's Messages API, and translates between them, so any client can use any model. The real OpenCode, Pi, Claude Code and Codex command-line clients have been tested through it with fake providers, and chat UIs use the same Chat Completions API. A small local helper keeps Claude Code on your Claude plan and moves it to the gateway when the plan runs out, and your ChatGPT plan can serve every client. A ChatGPT plan has served real text and tool requests through the gateway from a laptop. The other providers, the VPS deployment and the transfer of a real sign-in to it are still untested. See [the design](docs/DESIGN.md) and [the to-do list](docs/TODO.md).
+**Status: Phases 1 to 4 are built.** The gateway serves the OpenAI Chat Completions and Responses APIs and Anthropic's Messages API, and translates between them, so any client can use any model. The real OpenCode, Pi, Claude Code and Codex command-line clients have been tested through it with fake providers, and chat UIs use the same Chat Completions API. A small local helper keeps Claude Code on your Claude plan and moves it to the gateway when the plan runs out, and your ChatGPT plan can serve every client. A real ChatGPT plan has served text and tool requests through the gateway. A deployed VPS has received that sign-in, answered a request and renewed its token. Other real providers, and OpenCode, Pi, Codex and chat UIs on the real plan, are still untested. See [the design](docs/DESIGN.md) and [the to-do list](docs/TODO.md).
 
 ## Try it locally
 
@@ -17,25 +17,9 @@ The demo walks through normal routing, failover, tier fallback with a warning, a
 
 ## Run it on a VPS
 
+Follow [the deployment guide](docs/DEPLOYMENT.md). It covers installation, choosing accounts, public or private access, connecting clients, updates, backups and troubleshooting.
+
 Use a VPS in a region your providers support, such as the United States, Singapore or Taiwan. Hong Kong and mainland China are not supported by Anthropic, OpenAI or Google. See [the design](docs/DESIGN.md#35-where-the-vps-may-run).
-
-```bash
-git clone https://github.com/ruobin/llm-rudder.git /opt/llm-rudder && cd /opt/llm-rudder
-cp .env.example .env && chmod 600 .env
-cp config/config.example.yaml config/config.yaml
-
-docker compose build gateway
-docker compose run --rm --no-deps gateway node dist/cli.js keygen \
-  LLMR_ADMIN_KEY LLMR_KEY_OPENCODE LLMR_KEY_PI LLMR_KEY_CHAT_UI LLMR_KEY_SCRIPTS LLMR_KEY_CLAUDE_CODE LLMR_KEY_CODEX
-# Put those keys, your provider keys and the database passwords in .env.
-# Edit the tiers in config/config.yaml.
-
-docker compose run --rm --no-deps gateway node dist/cli.js check-config
-docker compose --profile caddy up -d         # add --profile chat for Open WebUI
-curl https://llm.example.com/healthz
-```
-
-If the VPS already runs Nginx, leave out the `caddy` profile and adapt [`deploy/nginx/llm-rudder.conf.example`](deploy/nginx/llm-rudder.conf.example).
 
 ## Use it
 
@@ -57,11 +41,7 @@ Response headers show what happened:
 
 Setup for OpenCode, Pi, Open WebUI and LibreChat is in [Appendix A of the design](docs/DESIGN.md#appendix-a-client-setup).
 
-To check accounts, budgets and active fallbacks from the VPS:
-
-```bash
-curl -H "Authorization: Bearer $LLMR_ADMIN_KEY" http://127.0.0.1:4141/router/status
-```
+To check accounts, budgets and active fallbacks, see [Operate it](docs/DEPLOYMENT.md#7-operate-it).
 
 ## Use it with Claude Code
 
@@ -105,7 +85,7 @@ Then run `codex --profile llmr`.
 
 ## Use your ChatGPT plan
 
-An eligible ChatGPT Plus or Pro plan can serve every client, through OpenAI's [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source) for open-source apps. Sign-in, the plan's model list, streaming, and a tool call with its follow-up have been tested against a real plan. Moving a real sign-in to a VPS and renewing it there have only been tested with fake servers.
+An eligible ChatGPT Plus or Pro plan can serve every client, through OpenAI's [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source) for open-source apps. Sign-in, moving it to a VPS, renewing it there, the plan's model list, streaming, and a tool call with its follow-up have been tested against a real plan.
 
 Before you turn it on:
 

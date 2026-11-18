@@ -4,15 +4,15 @@ This is the working checklist. [`DESIGN.md`](DESIGN.md) explains why. Each phase
 
 **Status key:** `[ ]` not started · `[~]` in progress · `[x]` done · **(you)** needs your accounts, keys or a decision
 
-| Phase                                     | Goal                                  | Size       | Status                        |
-| ----------------------------------------- | ------------------------------------- | ---------- | ----------------------------- |
-| [0](#phase-0--verify-with-real-accounts)  | Verify assumptions with real accounts | 1–2 days   | Not started                   |
-| [1](#phase-1--mvp-gateway-on-the-vps)     | MVP gateway on the VPS                | ~1 week    | Code done; deployment pending |
-| [2](#phase-2--claude-code-lane)           | Claude Code lane                      | ~1 week    | Code done; real login pending |
-| [3](#phase-3--translation-codex-and-pins) | Translation, Codex and pins           | 2–3 weeks  | Code done; real keys pending  |
-| [4](#phase-4--chatgpt-plan)               | ChatGPT plan                          | ~1 week    | Code done; real plan pending  |
-| [5](#phase-5--dashboard-and-hardening)    | Dashboard and hardening               | 2–3 weeks  | Not started                   |
-| [6](#phase-6--scale)                      | Scale                                 | Open-ended | Not started                   |
+| Phase                                     | Goal                                  | Size       | Status                         |
+| ----------------------------------------- | ------------------------------------- | ---------- | ------------------------------ |
+| [0](#phase-0--verify-with-real-accounts)  | Verify assumptions with real accounts | 1–2 days   | In progress                    |
+| [1](#phase-1--mvp-gateway-on-the-vps)     | MVP gateway on the VPS                | ~1 week    | Deployed; client checks left   |
+| [2](#phase-2--claude-code-lane)           | Claude Code lane                      | ~1 week    | Code done; real login pending  |
+| [3](#phase-3--translation-codex-and-pins) | Translation, Codex and pins           | 2–3 weeks  | Code done; real keys pending   |
+| [4](#phase-4--chatgpt-plan)               | ChatGPT plan                          | ~1 week    | Deployed; long-run checks left |
+| [5](#phase-5--dashboard-and-hardening)    | Dashboard and hardening               | 2–3 weeks  | Not started                    |
+| [6](#phase-6--scale)                      | Scale                                 | Open-ended | Not started                    |
 
 ---
 
@@ -22,8 +22,8 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 
 **VPS**
 
-- [ ] **(you)** Choose a VPS in a supported region: United States, Singapore or Taiwan. Do not use Hong Kong or mainland China.
-- [ ] **(you)** Choose a gateway hostname, and decide between Caddy and an existing Nginx.
+- [x] **(you)** Choose a VPS in a supported region: United States, Singapore or Taiwan. Do not use Hong Kong or mainland China.
+- [x] **(you)** Choose a gateway hostname, and decide between Caddy and an existing Nginx.
 
 **API keys and gateways**
 
@@ -46,7 +46,7 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 **ChatGPT plan** (can wait until Phase 4)
 
 - [x] **(you)** Decide whether the repository can become public and open source.
-- [~] Test sign-in on a laptop, credential transfer to the VPS, and a token refresh from the VPS. The laptop sign-in works. The rest needs the VPS.
+- [x] Test sign-in on a laptop, credential transfer to the VPS, and a token refresh from the VPS.
 
 **Clients**
 
@@ -122,7 +122,7 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 - [x] Automated: when `frontier` targets return quota errors, the same request is answered by `medium`, with headers, a visible note and one notification.
 - [x] Automated: reaching a budget skips that target, and spend survives a restart.
 - [x] Automated: a failure after streaming starts gives an error event, never a spliced answer.
-- [ ] **(you)** Deployed on the VPS with TLS.
+- [x] **(you)** Deployed on the VPS with TLS.
 - [x] Automated: the real OpenCode and Pi CLIs complete conversations and tool loops through it, with fake providers.
 - [ ] **(you)** OpenCode, Pi and your chat UI complete a real conversation on the deployed gateway.
 
@@ -201,13 +201,14 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 - [x] Model list from the plan
 - [x] Per-app cap guidance in the setup docs
 - [x] Real sign-in on the laptop, and real text and tool requests through the gateway
-- [ ] **(you)** Push the sign-in to the VPS and set this app's usage limit
+- [x] Sign-in moved to the VPS, with a real request served through the deployed gateway
+- [ ] **(you)** Set this app's usage limit in ChatGPT settings
 
 **Exit criteria**
 
-- [~] OpenCode, the chat UI and Codex are served from the plan. A real plan served Chat Completions requests through the gateway, and the real OpenCode, Pi and Codex clients pass against a fake OpenAI. Those clients on the real plan, and the chat UI, are untested.
+- [~] OpenCode, the chat UI and Codex are served from the plan. A real plan serves Chat Completions requests through the deployed gateway, and the real OpenCode, Pi and Codex clients pass against a fake OpenAI. Those clients on the real plan, and the chat UI, are untested.
 - [~] When the plan reaches a limit, traffic moves to the next target and comes back later. Tested against a fake OpenAI.
-- [~] Token refresh works unattended for at least a week. An eight-day run with a simulated clock and rotating tokens passes. It still needs a real week on the VPS.
+- [~] Token refresh works unattended for at least a week. The first real refresh on the VPS worked, and an eight-day run with a simulated clock passes. It still needs a real week.
 
 ---
 
