@@ -546,7 +546,8 @@ class RequestRun {
       }
 
       let keepReading = true;
-      if (!headerString(response.headers["content-type"]).includes("text/event-stream")) {
+      const contentType = headerString(response.headers["content-type"]);
+      if (!protocol.streamOnly && !contentType.includes("text/event-stream")) {
         // Some gateways answer a stream request with one JSON document.
         const events = reader.fromDocument(await response.body.text(), rt.now());
         if (!Array.isArray(events)) {

@@ -12,6 +12,7 @@ import { classifyAnthropicHttpError } from "../upstream/anthropic.js";
 import {
   classifyChatGptHttpError,
   classifyHttpError,
+  upstreamRequestId,
   type HeaderBag,
 } from "../upstream/classify.js";
 import type { UpstreamResponse } from "../upstream/client.js";
@@ -129,7 +130,7 @@ const chatGptPlanCodec: Codec = {
         {
           account: account.id,
           status: response.status,
-          upstreamRequestId: response.headers["x-request-id"],
+          upstreamRequestId: upstreamRequestId(response.headers),
         },
         "the ChatGPT plan rejected a request",
       );

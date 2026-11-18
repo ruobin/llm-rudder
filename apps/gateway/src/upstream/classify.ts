@@ -109,6 +109,11 @@ function headerValue(headers: HeaderBag, name: string): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+/** The ID OpenAI gives a request, which its support needs to look into a failure. */
+export function upstreamRequestId(headers: HeaderBag): string | undefined {
+  return headerValue(headers, "x-oai-request-id") ?? headerValue(headers, "x-request-id");
+}
+
 /** Parses durations such as "6m0s", "1.5s" and "200ms". */
 export function parseDurationS(value: string): number | undefined {
   let total = 0;

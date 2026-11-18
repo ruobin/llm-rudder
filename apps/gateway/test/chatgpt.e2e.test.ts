@@ -13,7 +13,9 @@ import {
   responsesFailedEvent,
   responsesStart,
   responsesTextEvents,
+  responsesTextStream,
   responsesToolStream,
+  type FakeStep,
 } from "../src/dev/fake-upstream.js";
 import type { JsonObject } from "../src/types.js";
 import {
@@ -322,6 +324,21 @@ describe("requests sent to the plan", () => {
     expect(
       planRequests().filter((request) => request.headers.authorization?.includes("access")),
     ).toHaveLength(0);
+  });
+});
+
+describe("responses from the plan", () => {
+  it("reads the stream whatever content type it is labelled with", async () => {
+    gateway.upstream.script(GPT, {
+      ...responsesTextStream(GPT, "Still read"),
+      headers: { "content-type": "application/octet-stream" },
+    } as FakeStep);
+    const response = await gateway.post(
+      { model: "frontier", stream: true, messages: userMessage() },
+      { key: SCRIPT_KEY },
+    );
+    expect(response.headers.get("x-llmr-target")).toContain(PLAN);
+    expect((await readEvents(response)).content).toBe("Still read");
   });
 });
 

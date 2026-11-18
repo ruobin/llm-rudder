@@ -16,7 +16,11 @@ import {
 import { FakeChatGptAuth } from "../src/dev/fake-chatgpt.js";
 import { QuotaManager } from "../src/state/quota.js";
 import type { Classified, Target } from "../src/types.js";
-import { classifyChatGptHttpError, classifyEmbeddedError } from "../src/upstream/classify.js";
+import {
+  classifyChatGptHttpError,
+  classifyEmbeddedError,
+  upstreamRequestId,
+} from "../src/upstream/classify.js";
 
 const HOUR = 3_600_000;
 const ACCOUNT = "chatgpt-plan";
@@ -249,6 +253,12 @@ describe("ChatGPT plan errors", () => {
     const expected = { outcome, scope, code, retryElsewhere: true };
     expect(http(status, coded(code))).toMatchObject(expected);
     expect(classifyEmbeddedError(coded(code), 0)).toMatchObject(expected);
+  });
+
+  it("finds the request ID under either header name", () => {
+    expect(upstreamRequestId({ "x-oai-request-id": "a", "x-request-id": "b" })).toBe("a");
+    expect(upstreamRequestId({ "x-request-id": "b" })).toBe("b");
+    expect(upstreamRequestId({})).toBeUndefined();
   });
 
   it("never invents a reset time for a usage limit", () => {
