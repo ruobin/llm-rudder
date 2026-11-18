@@ -1,4 +1,4 @@
-import { replaceTopLevelString } from "@llm-rudder/shared";
+import { replaceTopLevelString, setTopLevelField } from "@llm-rudder/shared";
 import { ulid } from "../../ids.js";
 import type { Classified, JsonObject, Usage } from "../../types.js";
 import {
@@ -8,6 +8,7 @@ import {
 } from "../../upstream/classify.js";
 import type { SseEvent } from "../../upstream/sse.js";
 import { parseUsage } from "../../upstream/usage.js";
+import { effortToAdd } from "../effort.js";
 import type { CompleteReply, StreamReader, StreamStep, WireProtocol } from "../protocol.js";
 
 const OUTPUT_EVENTS = new Set([
@@ -129,9 +130,13 @@ class ResponsesStreamReader implements StreamReader {
 export const openAiResponses: WireProtocol = {
   supportsNotice: true,
 
-  send({ rt, ctx, target, account }, { stream, signal }) {
-    const body = replaceTopLevelString(ctx.rawBody as Buffer, "model", target.model);
+  send(attempt, { stream, signal }) {
+    const { rt, ctx, target, account } = attempt;
+    let body = replaceTopLevelString(ctx.rawBody as Buffer, "model", target.model);
     if (!body) throw new Error("The request has no model field.");
+    const reasoning = (ctx.body.reasoning ?? {}) as JsonObject;
+    const effort = effortToAdd(attempt, reasoning.effort);
+    if (effort) body = setTopLevelField(body, "reasoning", { ...reasoning, effort }) ?? body;
     return rt.upstream.sendResponses(account, { body, stream, signal });
   },
 

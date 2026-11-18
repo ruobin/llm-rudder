@@ -8,6 +8,7 @@ import {
   isCredentialHeader,
   parseEdgePlan,
   replaceTopLevelString,
+  setTopLevelField,
   withoutOauthBetas,
 } from "../src/index.js";
 
@@ -58,6 +59,33 @@ describe("top-level JSON fields", () => {
     const body = Buffer.concat([bytes('{"x":"'), Buffer.from([0xff]), bytes('","model":"a"}')]);
     const result = replaceTopLevelString(body, "model", "b");
     expect(result?.includes(Buffer.from([0xff]))).toBe(true);
+  });
+});
+
+describe("setting a top-level JSON field", () => {
+  it("adds a missing field and leaves every other byte alone", () => {
+    const body = bytes('{ "model" : "m",\n "n":1.50, "2":{"1":[ ]} }');
+    expect(setTopLevelField(body, "reasoning", { effort: "high" })?.toString()).toBe(
+      '{ "model" : "m",\n "n":1.50, "2":{"1":[ ]},"reasoning":{"effort":"high"} }',
+    );
+  });
+
+  it("replaces an existing value in place", () => {
+    const body = bytes('{"a":1,"reasoning":{"summary":"auto"},"b":2.0}');
+    expect(setTopLevelField(body, "reasoning", { effort: "low" })?.toString()).toBe(
+      '{"a":1,"reasoning":{"effort":"low"},"b":2.0}',
+    );
+  });
+
+  it("handles an empty object and rejects anything else", () => {
+    expect(setTopLevelField(bytes(" { } "), "a", 1)?.toString()).toBe(' {"a":1 } ');
+    expect(setTopLevelField(bytes("[1]"), "a", 1)).toBeNull();
+    expect(setTopLevelField(bytes('{"a":'), "a", 1)).toBeNull();
+  });
+
+  it("still reads the last duplicate and ignores a non-string one", () => {
+    expect(findTopLevelString(bytes('{"m":"a","m":"b"}'), "m")?.value).toBe("b");
+    expect(findTopLevelString(bytes('{"m":"a","m":1}'), "m")).toBeNull();
   });
 });
 

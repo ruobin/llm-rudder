@@ -1,5 +1,5 @@
 /**
- * Reads and replaces one top-level string in JSON without re-encoding the rest.
+ * Reads and changes one top-level field in JSON without re-encoding the rest.
  *
  * Parsing and re-serializing a request can reorder numeric object keys and
  * change number formats, which alters what Anthropic's prompt cache sees. These
@@ -81,19 +81,24 @@ function decodeString(bytes: Buffer, start: number, end: number): string | null 
   }
 }
 
-/**
- * Finds a top-level string field. Returns null when the field is absent, is not
- * a string, or the body is not a JSON object. As in JSON.parse, the last
- * duplicate wins.
- */
-export function findTopLevelString(body: Buffer, field: string): StringField | null {
+interface TopLevelField {
+  /** Null when the key cannot be decoded. */
+  key: string | null;
+  /** Byte offset where the value starts. */
+  start: number;
+  /** Byte offset just after the value. */
+  end: number;
+}
+
+/** Lists the fields of a JSON object in order. Returns null if the body is not one. */
+function topLevelFields(body: Buffer): TopLevelField[] | null {
   let index = skipSpace(body, 0);
   if (body[index] !== OPEN_BRACE) return null;
   index = skipSpace(body, index + 1);
-  let found: StringField | null = null;
+  const fields: TopLevelField[] = [];
 
   while (index < body.length) {
-    if (body[index] === CLOSE_BRACE) return found;
+    if (body[index] === CLOSE_BRACE) return fields;
     if (body[index] !== QUOTE) return null;
     const keyEnd = stringEnd(body, index);
     if (keyEnd === -1) return null;
@@ -106,16 +111,25 @@ export function findTopLevelString(body: Buffer, field: string): StringField | n
     const start = index;
     const end = valueEnd(body, start);
     if (end === -1) return null;
-    if (key === field) {
-      const value = body[start] === QUOTE ? decodeString(body, start, end) : null;
-      found = value === null ? null : { value, start, end };
-    }
+    fields.push({ key, start, end });
 
     index = skipSpace(body, end);
     if (body[index] === COMMA) index = skipSpace(body, index + 1);
     else if (body[index] !== CLOSE_BRACE) return null;
   }
   return null;
+}
+
+/**
+ * Finds a top-level string field. Returns null when the field is absent, is not
+ * a string, or the body is not a JSON object. As in JSON.parse, the last
+ * duplicate wins.
+ */
+export function findTopLevelString(body: Buffer, field: string): StringField | null {
+  const found = topLevelFields(body)?.findLast(({ key }) => key === field);
+  if (!found || body[found.start] !== QUOTE) return null;
+  const value = decodeString(body, found.start, found.end);
+  return value === null ? null : { value, start: found.start, end: found.end };
 }
 
 /** Sets a top-level string field. Returns null when the field cannot be found. */
@@ -127,5 +141,31 @@ export function replaceTopLevelString(body: Buffer, field: string, value: string
     body.subarray(0, found.start),
     Buffer.from(JSON.stringify(value), "utf8"),
     body.subarray(found.end),
+  ]);
+}
+
+/**
+ * Sets a top-level field to any JSON value, adding it after the last field if it is
+ * missing. Returns null when the body is not a JSON object.
+ */
+export function setTopLevelField(body: Buffer, field: string, value: unknown): Buffer | null {
+  const fields = topLevelFields(body);
+  if (!fields) return null;
+  const encoded = JSON.stringify(value);
+  const existing = fields.findLast(({ key }) => key === field);
+  if (existing) {
+    return Buffer.concat([
+      body.subarray(0, existing.start),
+      Buffer.from(encoded, "utf8"),
+      body.subarray(existing.end),
+    ]);
+  }
+  const last = fields.at(-1);
+  const insertAt = last ? last.end : body.indexOf(OPEN_BRACE) + 1;
+  const added = `${last ? "," : ""}${JSON.stringify(field)}:${encoded}`;
+  return Buffer.concat([
+    body.subarray(0, insertAt),
+    Buffer.from(added, "utf8"),
+    body.subarray(insertAt),
   ]);
 }

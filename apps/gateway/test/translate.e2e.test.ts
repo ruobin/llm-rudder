@@ -524,7 +524,8 @@ describe("Responses clients", () => {
   const input = [{ role: "user" as const, content: "Hello" }];
 
   it("passes through to a Responses account, changing only the model", async () => {
-    const prefix = '{"tools":[],"n":1.0,"input":"Hi","store":false,"future":{"2":1,"1":2},';
+    const prefix =
+      '{"tools":[],"n":1.0,"input":"Hi","store":false,"future":{"2":1,"1":2},"reasoning":{"effort":"low"},';
     await postRaw("/v1/responses", `${prefix}"model":"gpt"}`);
     const seen = lastRequest(GPT);
     expect(seen.path).toBe("/v1/responses");

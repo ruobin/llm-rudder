@@ -1,4 +1,8 @@
-import { anthropicResponseHeaders, replaceTopLevelString } from "@llm-rudder/shared";
+import {
+  anthropicResponseHeaders,
+  replaceTopLevelString,
+  setTopLevelField,
+} from "@llm-rudder/shared";
 import type { Classified, JsonObject, Usage } from "../../types.js";
 import {
   AnthropicUsage,
@@ -6,6 +10,7 @@ import {
   classifyAnthropicHttpError,
 } from "../../upstream/anthropic.js";
 import type { SseEvent } from "../../upstream/sse.js";
+import { effortToAdd } from "../effort.js";
 import type { CompleteReply, StreamReader, StreamStep, WireProtocol } from "../protocol.js";
 
 function parseObject(text: string): JsonObject | null {
@@ -109,10 +114,14 @@ export const anthropicMessages: WireProtocol = {
     headers: { "x-llmr-upstream-error": "1" },
   }),
 
-  send({ rt, ctx, target, account }, { stream, signal }) {
-    // Only the model may change, so prompt caching and signatures keep working.
-    const body = replaceTopLevelString(ctx.rawBody as Buffer, "model", target.model);
+  send(attempt, { stream, signal }) {
+    const { rt, ctx, target, account } = attempt;
+    // Messages stay byte for byte the same, so prompt caching and signatures keep working.
+    let body = replaceTopLevelString(ctx.rawBody as Buffer, "model", target.model);
     if (!body) throw new Error("The request has no model field.");
+    const output = (ctx.body.output_config ?? {}) as JsonObject;
+    const effort = effortToAdd(attempt, output.effort);
+    if (effort) body = setTopLevelField(body, "output_config", { ...output, effort }) ?? body;
     return rt.upstream.sendAnthropic(account, {
       path: "/v1/messages",
       query: ctx.upstreamQuery ?? "",

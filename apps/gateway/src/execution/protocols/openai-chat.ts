@@ -1,6 +1,7 @@
 import type { Classified, JsonObject, Usage } from "../../types.js";
 import { classifyEmbeddedError, classifyHttpError } from "../../upstream/classify.js";
 import { buildUpstreamBody } from "../../upstream/request.js";
+import { effortToAdd } from "../effort.js";
 import type { SseEvent } from "../../upstream/sse.js";
 import { StreamToolExtras } from "../../upstream/tool-extras.js";
 import { parseUsage } from "../../upstream/usage.js";
@@ -168,8 +169,11 @@ class ChatStreamReader implements StreamReader {
 export const openAiChat: WireProtocol = {
   supportsNotice: true,
 
-  send({ rt, ctx, target, account }, { stream, signal }) {
-    const body = buildUpstreamBody(ctx.body, target, account, stream, ctx.client.id, rt.toolExtras);
+  send(attempt, { stream, signal }) {
+    const { rt, ctx, target, account } = attempt;
+    const effort = effortToAdd(attempt, ctx.body.reasoning_effort);
+    const request = effort ? { ...ctx.body, reasoning_effort: effort } : ctx.body;
+    const body = buildUpstreamBody(request, target, account, stream, ctx.client.id, rt.toolExtras);
     return rt.upstream.sendChat(account, body, { stream, signal });
   },
 
