@@ -1,6 +1,6 @@
 {$LLMR_DOMAIN} {
-	# The API and the endpoints llmr-edge uses. Use an SSH tunnel for the rest of /router/*.
-	@public path /v1/* /healthz /router/edge/*
+	# The API and the endpoints llmr-edge and Codex use. Use an SSH tunnel for the rest of /router/*.
+	@public path /v1/* /healthz /router/edge/* /router/codex/*
 	handle @public {
 		request_body {
 			max_size 32MB
