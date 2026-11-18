@@ -77,6 +77,47 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # Metrics and charts: docker compose --profile monitoring up -d
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    profiles: [monitoring]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+    secrets:
+      - metrics-key
+    volumes:
+      - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - gateway
+
+  grafana:
+    image: grafana/grafana:13.2.6
+    profiles: [monitoring]
+    restart: unless-stopped
+    # Refuses to start without a password, rather than using Grafana's default one.
+    entrypoint:
+      - sh
+      - -c
+      - '[ -n "$$GF_SECURITY_ADMIN_PASSWORD" ] || { echo "Set LLMR_GRAFANA_PASSWORD in .env."; exit 1; }; exec /run.sh'
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${LLMR_GRAFANA_PASSWORD:-}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+    ports:
+      - 127.0.0.1:${LLMR_GRAFANA_PORT:-3001}:3000
+    volumes:
+      - ./deploy/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
   # Use on a fresh VPS: docker compose --profile caddy up -d
   caddy:
     image: caddy:2-alpine
@@ -116,7 +157,13 @@ services:
     depends_on:
       - gateway
 
+secrets:
+  metrics-key:
+    environment: LLMR_METRICS_KEY
+
 volumes:
+  prometheus-data:
+  grafana-data:
   gateway-state:
   mysql-data:
   caddy-data:
