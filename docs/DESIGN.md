@@ -1,10 +1,10 @@
 # llm-router — Design
 
-| | |
-|---|---|
-| Status | Draft 2, 2026-11-18. It replaces the local-first Python Draft 1, which stays in git history. |
-| Scope | A personal model gateway on your own VPS, with a phased path to a production-grade service |
-| Work plan | [`TODO.md`](TODO.md) splits the work into phases with checklists and exit criteria. |
+|           |                                                                                                                                                                |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status    | Draft 2, 2026-11-18. It replaces the local-first Python Draft 1, which stays in git history.                                                                   |
+| Scope     | A personal model gateway on your own VPS, with a phased path to a production-grade service                                                                     |
+| Work plan | [`TODO.md`](TODO.md) splits the work into phases with checklists and exit criteria.                                                                            |
 | Reference | [`ROUTER_DESIGN.md`](ROUTER_DESIGN.md), an earlier proposal by another agent. [Appendix B](#appendix-b-what-changed) lists what this design keeps and changes. |
 
 **In one sentence:** llm-router is one HTTPS endpoint on your VPS that turns `frontier`, `medium` and `flash` into real models across your subscriptions, API keys and third-party gateways, moves to the next option when one runs out, and warns you when it has to drop to a lower tier.
@@ -44,14 +44,14 @@ llm-router puts one endpoint in front of all of it:
 
 These are the conclusions from section 3. They shape the whole design.
 
-| You have | Usable through the router? | How |
-|---|---|---|
-| **API keys** (Anthropic, OpenAI, Gemini) | Yes, from every client | Normal metered use on the VPS. |
-| **Third-party gateways** (your New API, OpenRouter, …) | Yes, from every client | A first-class OpenAI-compatible account type. |
-| **ChatGPT plan** | Yes, from every client (Phase 4) | OpenAI's Sign in with ChatGPT, which documents running an **open-source** app on a remote VM. This repository must be public by then. |
-| **Claude plan** | **Claude Code only** (Phase 2) | A small local helper, `llmr-edge`, keeps your login on your laptop and sends it only to Anthropic. The VPS never sees it. |
-| **Gemini plan login** | **No** | Google says third-party access through that login can get the account suspended or terminated. |
-| **Gemini plan's monthly developer credit** | Yes | The plan includes $10, $40 or $100 a month of developer credit that Google says can pay for the Gemini API. The router uses it through a normal API key. |
+| You have                                               | Usable through the router?       | How                                                                                                                                                      |
+| ------------------------------------------------------ | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **API keys** (Anthropic, OpenAI, Gemini)               | Yes, from every client           | Normal metered use on the VPS.                                                                                                                           |
+| **Third-party gateways** (your New API, OpenRouter, …) | Yes, from every client           | A first-class OpenAI-compatible account type.                                                                                                            |
+| **ChatGPT plan**                                       | Yes, from every client (Phase 4) | OpenAI's Sign in with ChatGPT, which documents running an **open-source** app on a remote VM. This repository must be public by then.                    |
+| **Claude plan**                                        | **Claude Code only** (Phase 2)   | A small local helper, `llmr-edge`, keeps your login on your laptop and sends it only to Anthropic. The VPS never sees it.                                |
+| **Gemini plan login**                                  | **No**                           | Google says third-party access through that login can get the account suspended or terminated.                                                           |
+| **Gemini plan's monthly developer credit**             | Yes                              | The plan includes $10, $40 or $100 a month of developer credit that Google says can pay for the Gemini API. The router uses it through a normal API key. |
 
 ### Five design choices
 
@@ -71,17 +71,17 @@ Your New API instance already pools API keys and retries across channels, so thi
 
 ### Goals
 
-| ID | Goal |
-|---|---|
-| G1 | One HTTPS endpoint on the VPS. Clients choose `frontier`, `medium` or `flash`. |
-| G2 | Automatic failover between targets on quota exhaustion, rate limits, overload and outages. |
-| G3 | Automatic fallback to another tier when a tier is used up, always with a warning. |
-| G4 | Use prepaid capacity first, and never spend more than a configured budget on metered accounts. |
-| G5 | Work with OpenCode, Pi, Claude Code, Codex, chat UIs and your own scripts. |
-| G6 | Support any OpenAI-compatible third-party gateway as an upstream. |
-| G7 | Be safe to expose on the internet: TLS, per-client keys, spend limits and no prompt logging. |
-| G8 | Show what served each request, what it cost, and the state of every account. |
-| G9 | Stay within each provider's rules for subscription credentials. |
+| ID  | Goal                                                                                           |
+| --- | ---------------------------------------------------------------------------------------------- |
+| G1  | One HTTPS endpoint on the VPS. Clients choose `frontier`, `medium` or `flash`.                 |
+| G2  | Automatic failover between targets on quota exhaustion, rate limits, overload and outages.     |
+| G3  | Automatic fallback to another tier when a tier is used up, always with a warning.              |
+| G4  | Use prepaid capacity first, and never spend more than a configured budget on metered accounts. |
+| G5  | Work with OpenCode, Pi, Claude Code, Codex, chat UIs and your own scripts.                     |
+| G6  | Support any OpenAI-compatible third-party gateway as an upstream.                              |
+| G7  | Be safe to expose on the internet: TLS, per-client keys, spend limits and no prompt logging.   |
+| G8  | Show what served each request, what it cost, and the state of every account.                   |
+| G9  | Stay within each provider's rules for subscription credentials.                                |
 
 ### Non-goals until the last phase
 
@@ -154,20 +154,20 @@ If a provider changes its rules, one account stops (`enabled: false`) and the re
 
 ## 4. Concepts
 
-| Term | Meaning |
-|---|---|
-| **Dialect** | The API format spoken by a client or upstream: `openai.chat`, `openai.responses` or `anthropic.messages`. |
-| **Tier** | What the client asks for: `frontier`, `medium`, `flash`. |
-| **Fallback tiers** | The tiers to try, in order, when a tier has no usable target. |
-| **Account** | One credential with its own limits, such as `openai-key` or `my-gateway`. It has a **cost class**: `prepaid`, `free` or `metered`. |
-| **Target** | One model on one account, with optional parameters. Targets are what the router selects and fails over between. |
-| **Client** | One caller with its own key, such as `opencode` or `chat-ui`. It has its own notice setting and limits. |
-| **Quota scope** | What a limit covers: the account (`*`), one model (`model:<id>`), a model family (`family:opus`, Phase 2), or one app (`app`, Phase 4). |
-| **Session** | One conversation, identified by a client header or derived from the start of the conversation. |
-| **Attempt** | One upstream call. A request may need several. |
-| **Commit point** | The moment the router starts sending model output to the client. Failover is only possible before it. |
-| **Fallback episode** | The period during which a tier is being served by another tier. Warnings are sent once per episode, not once per request. |
-| **Edge** | `llmr-edge`, a small local process that handles Claude Code's plan traffic (Phase 2). |
+| Term                 | Meaning                                                                                                                                 |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Dialect**          | The API format spoken by a client or upstream: `openai.chat`, `openai.responses` or `anthropic.messages`.                               |
+| **Tier**             | What the client asks for: `frontier`, `medium`, `flash`.                                                                                |
+| **Fallback tiers**   | The tiers to try, in order, when a tier has no usable target.                                                                           |
+| **Account**          | One credential with its own limits, such as `openai-key` or `my-gateway`. It has a **cost class**: `prepaid`, `free` or `metered`.      |
+| **Target**           | One model on one account, with optional parameters. Targets are what the router selects and fails over between.                         |
+| **Client**           | One caller with its own key, such as `opencode` or `chat-ui`. It has its own notice setting and limits.                                 |
+| **Quota scope**      | What a limit covers: the account (`*`), one model (`model:<id>`), a model family (`family:opus`, Phase 2), or one app (`app`, Phase 4). |
+| **Session**          | One conversation, identified by a client header or derived from the start of the conversation.                                          |
+| **Attempt**          | One upstream call. A request may need several.                                                                                          |
+| **Commit point**     | The moment the router starts sending model output to the client. Failover is only possible before it.                                   |
+| **Fallback episode** | The period during which a tier is being served by another tier. Warnings are sent once per episode, not once per request.               |
+| **Edge**             | `llmr-edge`, a small local process that handles Claude Code's plan traffic (Phase 2).                                                   |
 
 ```mermaid
 classDiagram
@@ -271,21 +271,21 @@ flowchart LR
   EXE -.-> LG[("Ledger")]
 ```
 
-| Component | Responsibility | Phase |
-|---|---|---|
-| **Ingress** | Authenticates the client, parses the dialect, derives the session key, builds a `RequestContext`. | 1 (Chat), 2 (Messages), 3 (Responses) |
-| **Resolver** | Maps a model string to a tier, or to the targets serving an exact model. | 1 |
-| **Planner** | Expands the tier and its fallback tiers into an ordered list of usable targets. | 1 |
-| **Executor** | Runs attempts, enforces timeouts, holds stream events until the commit point, applies outcomes. | 1 |
-| **Egress adapters** | Build the upstream request, send it, and classify errors. | 1 (Chat), 2 (Anthropic), 3 (Responses) |
-| **Translator** | Converts between dialects through a common representation. | 3 |
-| **Quota store** | Account and model quota states, written through to MySQL. | 1 |
-| **Budgets and pricing** | Spend limits for metered accounts. | 1 |
-| **Ledger** | One row per request and per attempt, with tokens and cost. No prompt content. | 1 |
-| **Notifier** | Push notifications, deduplicated by episode. | 1 |
-| **Edge** | Local helper for Claude Code. | 2 |
-| **Session pins** | Keep a conversation on one target to protect the prompt cache. | 3 |
-| **Dashboard** | Web UI for status, usage and client keys. | 5 |
+| Component               | Responsibility                                                                                    | Phase                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **Ingress**             | Authenticates the client, parses the dialect, derives the session key, builds a `RequestContext`. | 1 (Chat), 2 (Messages), 3 (Responses)  |
+| **Resolver**            | Maps a model string to a tier, or to the targets serving an exact model.                          | 1                                      |
+| **Planner**             | Expands the tier and its fallback tiers into an ordered list of usable targets.                   | 1                                      |
+| **Executor**            | Runs attempts, enforces timeouts, holds stream events until the commit point, applies outcomes.   | 1                                      |
+| **Egress adapters**     | Build the upstream request, send it, and classify errors.                                         | 1 (Chat), 2 (Anthropic), 3 (Responses) |
+| **Translator**          | Converts between dialects through a common representation.                                        | 3                                      |
+| **Quota store**         | Account and model quota states, written through to MySQL.                                         | 1                                      |
+| **Budgets and pricing** | Spend limits for metered accounts.                                                                | 1                                      |
+| **Ledger**              | One row per request and per attempt, with tokens and cost. No prompt content.                     | 1                                      |
+| **Notifier**            | Push notifications, deduplicated by episode.                                                      | 1                                      |
+| **Edge**                | Local helper for Claude Code.                                                                     | 2                                      |
+| **Session pins**        | Keep a conversation on one target to protect the prompt cache.                                    | 3                                      |
+| **Dashboard**           | Web UI for status, usage and client keys.                                                         | 5                                      |
 
 **Process model.** The gateway is one Node.js process in one container. In Phase 1, quota state is cached in memory and written through to MySQL. Section 10 describes how it grows to several instances.
 
@@ -377,14 +377,14 @@ sequenceDiagram
 
 Details and example files are in [Appendix A](#appendix-a-client-setup).
 
-| Client | Speaks to the router | Credential | Session identity | How you see a warning | Phase |
-|---|---|---|---|---|---|
-| **OpenCode** | Chat Completions (`openai-compatible` package) | Router key | Derived from the conversation | Note in the reply, push | 1 |
-| **Pi** | Chat Completions (`api: openai-completions`) | Router key | `x-session-affinity` when enabled, else derived | Note in the reply, push | 1 |
-| **Chat UI** (Open WebUI, LibreChat) | Chat Completions | Router key | `X-Session-Id` set from the UI's chat ID | Note in the reply, push | 1 |
-| **Your scripts** | Chat Completions (OpenAI SDK) | Router key | Optional `X-Session-Id` | Response headers, push | 1 |
-| **Claude Code** | Anthropic Messages, through `llmr-edge` | Claude login stays local | `x-claude-code-session-id` | Status line, desktop notification | 2 |
-| **Codex** | Responses API only | Router key via a `--profile` | Derived from the conversation | Note in the reply, push | 3 |
+| Client                              | Speaks to the router                           | Credential                   | Session identity                                | How you see a warning             | Phase |
+| ----------------------------------- | ---------------------------------------------- | ---------------------------- | ----------------------------------------------- | --------------------------------- | ----- |
+| **OpenCode**                        | Chat Completions (`openai-compatible` package) | Router key                   | Derived from the conversation                   | Note in the reply, push           | 1     |
+| **Pi**                              | Chat Completions (`api: openai-completions`)   | Router key                   | `x-session-affinity` when enabled, else derived | Note in the reply, push           | 1     |
+| **Chat UI** (Open WebUI, LibreChat) | Chat Completions                               | Router key                   | `X-Session-Id` set from the UI's chat ID        | Note in the reply, push           | 1     |
+| **Your scripts**                    | Chat Completions (OpenAI SDK)                  | Router key                   | Optional `X-Session-Id`                         | Response headers, push            | 1     |
+| **Claude Code**                     | Anthropic Messages, through `llmr-edge`        | Claude login stays local     | `x-claude-code-session-id`                      | Status line, desktop notification | 2     |
+| **Codex**                           | Responses API only                             | Router key via a `--profile` | Derived from the conversation                   | Note in the reply, push           | 3     |
 
 Facts from the client docs that shape the gateway:
 
@@ -400,26 +400,26 @@ Facts from the client docs that shape the gateway:
 
 ### 8.1 Tech stack
 
-| Layer | Choice | Why |
-|---|---|---|
-| Language | **TypeScript 6** (strict, ESM) | The most common choice for this kind of service, and one language across gateway, edge and dashboard. typescript-eslint does not support TypeScript 7 yet. |
-| Runtime | **Node.js 26 LTS** in containers; 22 or later works for development | Excellent at many concurrent streams. |
-| HTTP server | **Fastify 5** | Popular, fast, good TypeScript support, and it lets a route take over the raw response for streaming. |
-| Upstream HTTP | **undici** | Node's own HTTP engine: connection pools and separate connect, header and body timeouts. |
-| Validation | **Zod 4** | Config and request validation with inferred types. |
-| Config format | **YAML** in git, secrets in environment variables | Reviewable routing policy. |
-| Database | **MySQL 8.4 LTS** | Very widely used, and the ledger needs joins, aggregates and atomic counters. |
-| Database access | **Drizzle ORM** with drizzle-kit migrations | Typed SQL with no separate engine binary. |
-| Shared state at scale | **Redis** (Phase 6) | The standard choice for atomic counters and locks across instances. |
-| Dashboard | **Next.js 16, React 19, Tailwind CSS, shadcn/ui** (Phase 5) | Your preferred front-end stack. |
-| Chat UI | **Open WebUI** in Docker | A popular chat UI that already works with OpenAI-compatible APIs. Building one adds nothing. |
-| Reverse proxy | **Caddy 2** on a fresh VPS, or your existing **Nginx** | Caddy gets TLS certificates automatically. Your New API host already runs Nginx, so a config for it is included. |
-| Containers | **Docker** and **Docker Compose** | One command to run everything. Kubernetes only if the scaling plan needs it. |
-| CI/CD | **GitHub Actions**, images in **GHCR** | Lint, type-check, test and build on every push. |
-| Logs and metrics | **Pino**, later **Prometheus** and **Grafana** | Structured logs with secret redaction. |
-| Tests | **Vitest**, with the official `openai` SDK as a test client | If the SDK works unchanged, the gateway is compatible. |
-| Lint and format | **ESLint**, **typescript-eslint**, **Prettier** | The usual setup. |
-| Packages | **pnpm** workspaces | Fast, strict, and suited to a monorepo. |
+| Layer                 | Choice                                                              | Why                                                                                                                                                        |
+| --------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Language              | **TypeScript 6** (strict, ESM)                                      | The most common choice for this kind of service, and one language across gateway, edge and dashboard. typescript-eslint does not support TypeScript 7 yet. |
+| Runtime               | **Node.js 26 LTS** in containers; 22 or later works for development | Excellent at many concurrent streams.                                                                                                                      |
+| HTTP server           | **Fastify 5**                                                       | Popular, fast, good TypeScript support, and it lets a route take over the raw response for streaming.                                                      |
+| Upstream HTTP         | **undici**                                                          | Node's own HTTP engine: connection pools and separate connect, header and body timeouts.                                                                   |
+| Validation            | **Zod 4**                                                           | Config and request validation with inferred types.                                                                                                         |
+| Config format         | **YAML** in git, secrets in environment variables                   | Reviewable routing policy.                                                                                                                                 |
+| Database              | **MySQL 8.4 LTS**                                                   | Very widely used, and the ledger needs joins, aggregates and atomic counters.                                                                              |
+| Database access       | **Drizzle ORM** with drizzle-kit migrations                         | Typed SQL with no separate engine binary.                                                                                                                  |
+| Shared state at scale | **Redis** (Phase 6)                                                 | The standard choice for atomic counters and locks across instances.                                                                                        |
+| Dashboard             | **Next.js 16, React 19, Tailwind CSS, shadcn/ui** (Phase 5)         | Your preferred front-end stack.                                                                                                                            |
+| Chat UI               | **Open WebUI** in Docker                                            | A popular chat UI that already works with OpenAI-compatible APIs. Building one adds nothing.                                                               |
+| Reverse proxy         | **Caddy 2** on a fresh VPS, or your existing **Nginx**              | Caddy gets TLS certificates automatically. Your New API host already runs Nginx, so a config for it is included.                                           |
+| Containers            | **Docker** and **Docker Compose**                                   | One command to run everything. Kubernetes only if the scaling plan needs it.                                                                               |
+| CI/CD                 | **GitHub Actions**, images in **GHCR**                              | Lint, type-check, test and build on every push.                                                                                                            |
+| Logs and metrics      | **Pino**, later **Prometheus** and **Grafana**                      | Structured logs with secret redaction.                                                                                                                     |
+| Tests                 | **Vitest**, with the official `openai` SDK as a test client         | If the SDK works unchanged, the gateway is compatible.                                                                                                     |
+| Lint and format       | **ESLint**, **typescript-eslint**, **Prettier**                     | The usual setup.                                                                                                                                           |
+| Packages              | **pnpm** workspaces                                                 | Fast, strict, and suited to a monorepo.                                                                                                                    |
 
 **Why not these?**
 
@@ -439,6 +439,8 @@ llm-router/
 │   │   │   ├── main.ts          # process entry point
 │   │   │   ├── app.ts           # builds the Fastify app (also used by tests)
 │   │   │   ├── cli.ts           # keygen, check-config
+│   │   │   ├── runtime.ts       # wires the services together
+│   │   │   ├── dev/             # fake upstream and the demo
 │   │   │   ├── config/          # Zod schema, YAML loader, compat profiles
 │   │   │   ├── auth/            # client keys, rate limits, failed-auth throttle
 │   │   │   ├── ingress/         # chat completions, models, admin routes
@@ -472,7 +474,7 @@ version: 1
 server:
   host: 0.0.0.0
   port: 4141
-  trust_proxy: true              # true behind Caddy or Nginx
+  trust_proxy: true # true behind Caddy or Nginx
   max_body_mb: 32
 
 admin:
@@ -480,12 +482,12 @@ admin:
 
 clients:
   - { id: opencode, key_env: LLMR_KEY_OPENCODE, notice: text }
-  - { id: pi,       key_env: LLMR_KEY_PI,       notice: text }
-  - { id: chat-ui,  key_env: LLMR_KEY_CHAT_UI,  notice: text }
-  - { id: scripts,  key_env: LLMR_KEY_SCRIPTS,  notice: none, rpm: 120 }
+  - { id: pi, key_env: LLMR_KEY_PI, notice: text }
+  - { id: chat-ui, key_env: LLMR_KEY_CHAT_UI, notice: text }
+  - { id: scripts, key_env: LLMR_KEY_SCRIPTS, notice: none, rpm: 120 }
 
 accounts:
-  my-gateway:                    # your New API instance
+  my-gateway: # your New API instance
     base_url_env: MY_GATEWAY_BASE_URL
     api_key_env: MY_GATEWAY_API_KEY
     compat: new_api
@@ -496,19 +498,21 @@ accounts:
     api_key_env: GEMINI_API_KEY
     compat: gemini
     cost_class: metered
-    budget: { monthly_usd: 10 }  # matches the Google AI Pro developer credit
+    trust: first_party
+    budget: { monthly_usd: 10 } # matches the Google AI Pro developer credit
   openai-key:
     base_url: https://api.openai.com/v1
     api_key_env: OPENAI_API_KEY
     compat: openai
     cost_class: metered
+    trust: first_party
     budget: { daily_usd: 5, monthly_usd: 50 }
 
 tiers:
   frontier:
     fallback_tiers: [medium, flash]
     prefer: quality
-    context_window: 200000       # what /v1/models reports
+    context_window: 200000 # what /v1/models reports
     targets:
       - { account: my-gateway, model: claude-opus-5-5 }
       - { account: openai-key, model: gpt-6-astra, params: { reasoning_effort: high } }
@@ -530,14 +534,14 @@ tiers:
       - { account: openai-key, model: gpt-6-luna }
       - { account: my-gateway, model: claude-haiku-5-5 }
 
-aliases:                         # first match wins
-  - { match: "claude-opus-*",   tier: frontier }
-  - { match: "claude-fable-*",  tier: frontier }
+aliases: # first match wins
+  - { match: "claude-opus-*", tier: frontier }
+  - { match: "claude-fable-*", tier: frontier }
   - { match: "claude-sonnet-*", tier: medium }
-  - { match: "claude-haiku-*",  tier: flash }
-  - { match: strong,   tier: frontier }
+  - { match: "claude-haiku-*", tier: flash }
+  - { match: strong, tier: frontier }
   - { match: balanced, tier: medium }
-  - { match: fast,     tier: flash }
+  - { match: fast, tier: flash }
 
 routing:
   max_attempts_per_tier: 3
@@ -545,10 +549,10 @@ routing:
 
 timeouts:
   connect_s: 10
-  first_byte_s: 120              # until upstream response headers arrive
-  commit_s: 300                  # until the first model output
-  stream_idle_s: 300             # silence after the commit point
-  keepalive_after_s: 20          # then start the client stream and send keep-alives
+  first_byte_s: 120 # until upstream response headers arrive
+  commit_s: 300 # until the first model output
+  stream_idle_s: 300 # silence after the commit point
+  keepalive_after_s: 20 # then start the client stream and send keep-alives
   keepalive_interval_s: 15
 
 notifications:
@@ -568,11 +572,15 @@ pricing_file: pricing.yaml
 
 ```yaml
 accounts:
-  anthropic-key: { api: anthropic.messages, base_url: https://api.anthropic.com,
-                   api_key_env: ANTHROPIC_API_KEY, cost_class: metered,
-                   budget: { daily_usd: 5 } }                         # Phase 2
-  claude-plan:   { kind: edge_only, cost_class: prepaid }             # Phase 2, never used by the VPS
-  chatgpt-plan:  { kind: chatgpt_plan, cost_class: prepaid }          # Phase 4
+  anthropic-key: {
+      api: anthropic.messages,
+      base_url: https://api.anthropic.com,
+      api_key_env: ANTHROPIC_API_KEY,
+      cost_class: metered,
+      budget: { daily_usd: 5 },
+    } # Phase 2
+  claude-plan: { kind: edge_only, cost_class: prepaid } # Phase 2, never used by the VPS
+  chatgpt-plan: { kind: chatgpt_plan, cost_class: prepaid } # Phase 4
 ```
 
 **Validation.** Config that breaks these rules does not load:
@@ -585,6 +593,8 @@ accounts:
 
 ### 8.4 Core types
 
+These are simplified from the code in `apps/gateway/src`.
+
 ```ts
 type Dialect = "openai.chat" | "openai.responses" | "anthropic.messages";
 type CostClass = "prepaid" | "free" | "metered";
@@ -594,18 +604,18 @@ interface RequestContext {
   requestId: string;
   client: ClientConfig;
   dialect: Dialect;
-  body: ChatRequest;            // parsed; unknown fields are kept
+  body: ChatRequest; // parsed; unknown fields are kept
   requestedModel: string;
   stream: boolean;
-  wantsUsage: boolean;          // the client asked for stream usage
+  wantsUsage: boolean; // the client asked for stream usage
   sessionKey: string;
   allowFallback: boolean;
   deadlineAt: number;
-  signal: AbortSignal;          // aborted when the client disconnects
+  signal: AbortSignal; // aborted when the client disconnects
 }
 
 interface Target {
-  id: string;                   // "frontier/openai-key/gpt-6-astra"
+  id: string; // "frontier/openai-key/gpt-6-astra"
   tier: string;
   accountId: string;
   model: string;
@@ -614,27 +624,37 @@ interface Target {
 
 interface PlanStep {
   target: Target;
-  isFallback: boolean;          // served by a tier other than the requested one
+  isFallback: boolean; // served by a tier other than the requested one
 }
 
 interface Plan {
   requestedTier: string;
   steps: PlanStep[];
-  skipped: SkippedTarget[];     // why a target was left out, for errors and status
+  skipped: SkippedTarget[]; // why a target was left out, for errors and status
 }
 
 type Outcome =
-  | "ok" | "quota_exhausted" | "rate_limited" | "billing" | "overloaded"
-  | "upstream_error" | "timeout" | "auth" | "unsupported"
-  | "context_overflow" | "client_error" | "refusal"
-  | "mid_stream_failure" | "client_aborted";
+  | "ok"
+  | "quota_exhausted"
+  | "rate_limited"
+  | "billing"
+  | "overloaded"
+  | "upstream_error"
+  | "timeout"
+  | "auth"
+  | "unsupported"
+  | "context_overflow"
+  | "client_error"
+  | "refusal"
+  | "mid_stream_failure"
+  | "client_aborted";
 
 interface Classified {
   outcome: Outcome;
   retryElsewhere: boolean;
   scope?: "account" | "model";
   retryAfterS?: number;
-  resetsAt?: number;            // epoch milliseconds
+  resetsAt?: number; // epoch milliseconds
   code?: string;
   message?: string;
 }
@@ -664,16 +684,20 @@ function buildPlan(ctx: RequestContext, cfg: Config, state: RouterState, now: nu
   if (exact) return planFromTargets(tier, exact, state, now);
 
   const chain = ctx.allowFallback ? [tier, ...cfg.tiers[tier].fallbackTiers] : [tier];
-  const ordered = cfg.tiers[tier].prefer === "cost"
-    ? [...targetsOf(chain).filter(notMetered), ...targetsOf(chain).filter(isMetered)]
-    : targetsOf(chain);
+  const ordered =
+    cfg.tiers[tier].prefer === "cost"
+      ? [...targetsOf(chain).filter(notMetered), ...targetsOf(chain).filter(isMetered)]
+      : targetsOf(chain);
 
   const steps: PlanStep[] = [];
   const skipped: SkippedTarget[] = [];
   const perTier = new Map<string, number>();
   for (const target of ordered) {
-    const blocked = whyBlocked(target, ctx, state, now);   // quota, budget, disabled
-    if (blocked) { skipped.push({ target, reason: blocked }); continue; }
+    const blocked = whyBlocked(target, ctx, state, now); // quota, budget, disabled
+    if (blocked) {
+      skipped.push({ target, reason: blocked });
+      continue;
+    }
     const used = perTier.get(target.tier) ?? 0;
     if (used >= cfg.routing.maxAttemptsPerTier) continue;
     perTier.set(target.tier, used + 1);
@@ -687,14 +711,14 @@ function buildPlan(ctx: RequestContext, cfg: Config, state: RouterState, now: nu
 
 **Timeouts:**
 
-| Setting | Default | Meaning |
-|---|---|---|
-| `connect_s` | 10 s | TCP and TLS to the upstream. |
-| `first_byte_s` | 120 s | Until response headers arrive. Third-party gateways may retry internally, so this is generous. |
-| `commit_s` | 300 s | Until the first model output. Reasoning models can think for minutes before any output. |
-| `stream_idle_s` | 300 s | Silence after the commit point. |
-| `keepalive_after_s` | 20 s | If no output has arrived by then, start the client stream and send keep-alive comments. |
-| `deadline_s` | 900 s | The whole request, across attempts. |
+| Setting             | Default | Meaning                                                                                                     |
+| ------------------- | ------- | ----------------------------------------------------------------------------------------------------------- |
+| `connect_s`         | 10 s    | TCP and TLS to the upstream.                                                                                |
+| `first_byte_s`      | 120 s   | Until response headers arrive. Third-party gateways may retry internally, so this is generous.              |
+| `commit_s`          | 300 s   | Until the first model output. Reasoning models can think for minutes before any output.                     |
+| `stream_idle_s`     | 300 s   | Silence after the commit point.                                                                             |
+| `keepalive_after_s` | 20 s    | If no output has arrived by then, start the client stream and send keep-alive comments.                     |
+| `deadline_s`        | 900 s   | Time to reach the first model output, across all attempts. For a non-streaming request, the whole response. |
 
 **The commit point for Chat Completions** is the first chunk with non-empty `content`, `tool_calls`, a reasoning field (`reasoning_content`, `reasoning`, `reasoning_text`), or a `finish_reason`. Earlier chunks, such as a role-only chunk, are held back.
 
@@ -705,7 +729,7 @@ async function execute(ctx: RequestContext, plan: Plan, out: ClientResponse): Pr
   const attempts: AttemptRecord[] = [];
   for (const step of plan.steps) {
     if (Date.now() > ctx.deadlineAt || ctx.signal.aborted) break;
-    if (!quota.tryAdmit(step.target)) continue;        // takes the probe slot if needed
+    if (!quota.tryAdmit(step.target)) continue; // takes the probe slot if needed
     const hold = budgets.reserve(step.target, ctx);
     if (!hold) continue;
 
@@ -729,41 +753,41 @@ async function execute(ctx: RequestContext, plan: Plan, out: ClientResponse): Pr
 
 **When every step fails:**
 
-| Situation | Response |
-|---|---|
+| Situation                                  | Response                                                                                         |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
 | All targets are blocked by quota or budget | `429` with `retry-after` set to the earliest known reset, and a body listing each target's state |
-| All attempts failed for other reasons | `502` with `code: all_targets_failed` and the last upstream error |
-| A non-retryable client error | The upstream's `4xx`, in the client's dialect |
-| The stream had already started | An SSE error event |
+| All attempts failed for other reasons      | `502` with `code: all_targets_failed` and the last upstream error                                |
+| A non-retryable client error               | The upstream's `4xx`, in the client's dialect                                                    |
+| The stream had already started             | An SSE error event                                                                               |
 
 ### 8.7 Outcome classification
 
 Classification is a pure function, so every rule has a unit test. It runs on HTTP errors, on `200` bodies containing `error`, and on stream events.
 
-| Outcome | Typical signals | Try the next target? | State change |
-|---|---|---|---|
-| `ok` | `2xx`, then a normal finish | — | Clears failures and probes. |
-| `quota_exhausted` | OpenAI `insufficient_quota`; New API `insufficient_user_quota`, `pre_consume_token_quota_failed`; OpenRouter `402`; Gemini Prepay `402`; "quota" or "balance" wording, including 额度不足 and 余额不足 | Yes | Account `exhausted` until a known reset, otherwise `backoff`. |
-| `rate_limited` | `429` without quota wording; Gemini `RESOURCE_EXHAUSTED` | Yes | Model `cooldown` for `retry-after`, capped at 5 minutes, otherwise 5 s doubling to 60 s. |
-| `overloaded` | `503`, `529`, `overloaded_error` | Yes | Model `cooldown`, 15 s. |
-| `upstream_error` | `500`, `502`, connection errors, an HTML error page, an empty stream | Yes | Model `cooldown`, 10 s doubling. |
-| `timeout` | Connect, first-byte, commit or idle timeout | Yes, before commit | Model `cooldown`, 30 s. |
-| `auth` | `401` | Yes | Account `disabled` until you fix it. Sends a notification. |
-| `billing` | `403` permission or plan problems | Yes | Account `backoff`. |
-| `unsupported` | `404` model not found; New API `503 model_not_found`, `get_channel_failed`, `channel:no_available_key`; a `400` naming an unsupported parameter | Yes | Model `cooldown`, 10 minutes. |
-| `context_overflow` | `context_length_exceeded`, "maximum context length", "prompt is too long" | **No** | Returned to the client with the standard code, so it compacts. |
-| `client_error` | Other `400` and `422` | No | None. |
-| `refusal` | Content filter, New API `sensitive_words_detected`, `prompt_blocked` | **No.** The router does not shop for a model that will comply. | None. |
-| `mid_stream_failure` | Any failure after the commit point | No | Model `cooldown`. |
+| Outcome              | Typical signals                                                                                                                                                                                        | Try the next target?                                           | State change                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `ok`                 | `2xx`, then a normal finish                                                                                                                                                                            | —                                                              | Clears failures and probes.                                                              |
+| `quota_exhausted`    | OpenAI `insufficient_quota`; New API `insufficient_user_quota`, `pre_consume_token_quota_failed`; OpenRouter `402`; Gemini Prepay `402`; "quota" or "balance" wording, including 额度不足 and 余额不足 | Yes                                                            | Account `exhausted` until a known reset, otherwise `backoff`.                            |
+| `rate_limited`       | `429` without quota wording; Gemini `RESOURCE_EXHAUSTED`                                                                                                                                               | Yes                                                            | Model `cooldown` for `retry-after`, capped at 5 minutes, otherwise 5 s doubling to 60 s. |
+| `overloaded`         | `503`, `529`, `overloaded_error`                                                                                                                                                                       | Yes                                                            | Model `cooldown`, 15 s.                                                                  |
+| `upstream_error`     | `500`, `502`, connection errors, an HTML error page, an empty stream                                                                                                                                   | Yes                                                            | Model `cooldown`, 10 s doubling.                                                         |
+| `timeout`            | Connect, first-byte, commit or idle timeout                                                                                                                                                            | Yes, before commit                                             | Model `cooldown`, 30 s.                                                                  |
+| `auth`               | `401`                                                                                                                                                                                                  | Yes                                                            | Account `disabled` until you fix it. Sends a notification.                               |
+| `billing`            | `403` permission or plan problems                                                                                                                                                                      | Yes                                                            | Account `backoff`.                                                                       |
+| `unsupported`        | `404` model not found; New API `503 model_not_found`, `get_channel_failed`, `channel:no_available_key`; a `400` naming an unsupported parameter                                                        | Yes                                                            | Model `cooldown`, 10 minutes.                                                            |
+| `context_overflow`   | `context_length_exceeded`, "maximum context length", "prompt is too long"                                                                                                                              | **No**                                                         | Returned to the client with the standard code, so it compacts.                           |
+| `client_error`       | Other `400` and `422`                                                                                                                                                                                  | No                                                             | None.                                                                                    |
+| `refusal`            | Content filter, New API `sensitive_words_detected`, `prompt_blocked`                                                                                                                                   | **No.** The router does not shop for a model that will comply. | None.                                                                                    |
+| `mid_stream_failure` | Any failure after the commit point                                                                                                                                                                     | No                                                             | Model `cooldown`.                                                                        |
 
 ### 8.8 Quota state
 
 ```ts
 interface QuotaState {
   status: "ok" | "cooldown" | "exhausted" | "backoff" | "probing" | "disabled";
-  retryAt?: number;       // epoch ms: when the target may be tried again
-  backoffS?: number;      // 900, 1800, 3600 ... capped at 14400
-  failures?: number;      // consecutive short failures
+  retryAt?: number; // epoch ms: when the target may be tried again
+  backoffS?: number; // 900, 1800, 3600 ... capped at 14400
+  failures?: number; // consecutive short failures
   probeStartedAt?: number;
   detail?: string;
 }
@@ -791,16 +815,16 @@ stateDiagram-v2
 
 This is the behavior you asked for: drop to a lower tier instead of failing, and say so.
 
-**What counts as a fallback.** A request is served by a tier other than the one it asked for. Moving between targets *inside* a tier is normal failover. It appears in headers and the ledger but does not interrupt you.
+**What counts as a fallback.** A request is served by a tier other than the one it asked for. Moving between targets _inside_ a tier is normal failover. It appears in headers and the ledger but does not interrupt you.
 
 **Four warning channels:**
 
-| Channel | Who sees it | When |
-|---|---|---|
-| **Response headers** | Scripts, logs | Every fallback response |
-| **Note in the reply** | Clients with `notice: text` | First fallback reply in each conversation, per episode |
-| **Push notification** | Your phone or desktop, through ntfy or a webhook | Once per episode, repeated hourly if it continues |
-| **Status line and desktop notification** | Claude Code | Phase 2, through the edge |
+| Channel                                  | Who sees it                                      | When                                                   |
+| ---------------------------------------- | ------------------------------------------------ | ------------------------------------------------------ |
+| **Response headers**                     | Scripts, logs                                    | Every fallback response                                |
+| **Note in the reply**                    | Clients with `notice: text`                      | First fallback reply in each conversation, per episode |
+| **Push notification**                    | Your phone or desktop, through ntfy or a webhook | Once per episode, repeated hourly if it continues      |
+| **Status line and desktop notification** | Claude Code                                      | Phase 2, through the edge                              |
 
 **Headers:**
 
@@ -833,10 +857,10 @@ Any OpenAI-compatible service can be an account. Compatibility quirks live in a 
 ```ts
 interface CompatProfile {
   maxTokensField: "keep" | "max_tokens" | "max_completion_tokens";
-  streamUsage: boolean;           // accepts stream_options.include_usage
-  systemRole: "keep" | "system";  // rewrite "developer" messages
-  dropFields: string[];           // fields this upstream rejects
-  toolExtras: boolean;            // keep tool_calls[].extra_content (Gemini)
+  streamUsage: boolean; // accepts stream_options.include_usage
+  systemRole: "keep" | "system"; // rewrite "developer" messages
+  dropFields: string[]; // fields this upstream rejects
+  toolExtras: boolean; // keep tool_calls[].extra_content (Gemini)
 }
 ```
 
@@ -844,14 +868,14 @@ Built-in profiles: `openai`, `gemini`, `new_api`, `openrouter`, `generic`. An ac
 
 **How your New API instance behaves.** These facts come from its public source (`relaykit/types/error.go`, `controller/relay.go`, `service/billing*.go`) and an unauthenticated request to your instance, which runs v1.0.0-rc.47.
 
-| Situation | What New API returns | Router's reading |
-|---|---|---|
-| Bad key | `401`, `{"error":{"code":"","message":"Invalid token ...","type":"new_api_error"}}` (seen on your instance) | `auth` |
-| Out of quota | `403`, `insufficient_user_quota` or `pre_consume_token_quota_failed` | `quota_exhausted` |
-| No channel for the model | `503`, `model_not_found` | `unsupported` for that model |
-| No channel available | `get_channel_failed`, `channel:no_available_key` | `unsupported` for that model |
-| Content blocked | `sensitive_words_detected`, `prompt_blocked` | `refusal` |
-| Error after streaming began | A `data:` event `{"error":{...}}` with no `choices` | Error event |
+| Situation                   | What New API returns                                                                                        | Router's reading             |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| Bad key                     | `401`, `{"error":{"code":"","message":"Invalid token ...","type":"new_api_error"}}` (seen on your instance) | `auth`                       |
+| Out of quota                | `403`, `insufficient_user_quota` or `pre_consume_token_quota_failed`                                        | `quota_exhausted`            |
+| No channel for the model    | `503`, `model_not_found`                                                                                    | `unsupported` for that model |
+| No channel available        | `get_channel_failed`, `channel:no_available_key`                                                            | `unsupported` for that model |
+| Content blocked             | `sensitive_words_detected`, `prompt_blocked`                                                                | `refusal`                    |
+| Error after streaming began | A `data:` event `{"error":{...}}` with no `choices`                                                         | Error event                  |
 
 **Rules that apply to all gateways:**
 
@@ -860,7 +884,7 @@ Built-in profiles: `openai`, `gemini`, `new_api`, `openrouter`, `generic`. An ac
 - **Do not retry what the gateway already retried.** New API has its own channel retry, so the router moves on to a different target.
 - **Loop guard.** The router sends `x-llmr-hop` with its instance ID, and refuses a request carrying its own ID. This stops a loop if New API ever has a channel pointing back at the router.
 - **Trust levels.** `self_hosted` for your own gateway, `third_party` for others. A client can be limited to certain accounts with `allow_accounts`, so sensitive scripts never reach a third party.
-- **Model honesty.** The router records the `model` the upstream reports and flags a mismatch. This catches only honest mislabeling: research shows black-box checks cannot reliably prove which model answered.
+- **Model honesty.** The router records the `model` the upstream reports, and Phase 5 adds a mismatch report. This catches only honest mislabeling: research shows black-box checks cannot reliably prove which model answered.
 - **Balance checks (Phase 5).** New API exposes `GET /v1/dashboard/billing/subscription` and `/usage` to the same key. OpenRouter exposes `GET /api/v1/key`. These can warn before a balance reaches zero.
 
 **Gemini tool calls.** Gemini 3 and 4 require thought signatures to be returned on function calls and answer `400` without them. Community reports place the signature at `tool_calls[].extra_content.google.thought_signature` in the OpenAI format; Google's page does not show the path, so Phase 0 confirms it. Coding clients often drop unknown fields, so the gateway keeps a short-lived map from tool call ID to `extra_content` and restores it on the next request. `extra_content` is removed for non-Gemini upstreams. When history came from another model, it uses Google's documented bypass value `skip_thought_signature_validator`.
@@ -951,19 +975,19 @@ interface IRRequest {
 type Block = Text | Image | Document | ToolCall | ToolResult | Reasoning;
 ```
 
-| Concept | `anthropic.messages` | `openai.chat` | `openai.responses` |
-|---|---|---|---|
-| System prompt | Top-level `system` | `system` or `developer` message | `instructions` |
-| Tool definition | `{name, description, input_schema}` | `{type: function, function: {...}}` | `{type: function, name, parameters}` |
-| Tool call | `tool_use {id, name, input}` | `tool_calls[{id, function}]` | `function_call {call_id, name, arguments}` |
-| Tool result | `tool_result` in a user turn | `role: tool` message | `function_call_output` |
-| Tool choice | `auto`, `none`, `any`, `{type: tool}` | `auto`, `none`, `required`, `{type: function}` | Same as Chat |
-| Output limit | `max_tokens` (required) | `max_completion_tokens` or `max_tokens` | `max_output_tokens` |
-| Reasoning | `thinking: {type: adaptive}`, `output_config.effort` | `reasoning_effort` | `reasoning: {effort}` |
-| Structured output | `output_config.format` | `response_format` | `text.format` |
-| Stop reason | `end_turn`, `max_tokens`, `tool_use`, `refusal` | `stop`, `length`, `tool_calls`, `content_filter` | `status`, `incomplete_details` |
-| Usage | `input_tokens` excludes cache | `prompt_tokens` includes cache | `input_tokens` includes cache |
-| Stream | `message_start`, `content_block_*`, `message_delta`, `message_stop` | `chat.completion.chunk`, `[DONE]` | `response.*` events, `response.completed` |
+| Concept           | `anthropic.messages`                                                | `openai.chat`                                    | `openai.responses`                         |
+| ----------------- | ------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------ |
+| System prompt     | Top-level `system`                                                  | `system` or `developer` message                  | `instructions`                             |
+| Tool definition   | `{name, description, input_schema}`                                 | `{type: function, function: {...}}`              | `{type: function, name, parameters}`       |
+| Tool call         | `tool_use {id, name, input}`                                        | `tool_calls[{id, function}]`                     | `function_call {call_id, name, arguments}` |
+| Tool result       | `tool_result` in a user turn                                        | `role: tool` message                             | `function_call_output`                     |
+| Tool choice       | `auto`, `none`, `any`, `{type: tool}`                               | `auto`, `none`, `required`, `{type: function}`   | Same as Chat                               |
+| Output limit      | `max_tokens` (required)                                             | `max_completion_tokens` or `max_tokens`          | `max_output_tokens`                        |
+| Reasoning         | `thinking: {type: adaptive}`, `output_config.effort`                | `reasoning_effort`                               | `reasoning: {effort}`                      |
+| Structured output | `output_config.format`                                              | `response_format`                                | `text.format`                              |
+| Stop reason       | `end_turn`, `max_tokens`, `tool_use`, `refusal`                     | `stop`, `length`, `tool_calls`, `content_filter` | `status`, `incomplete_details`             |
+| Usage             | `input_tokens` excludes cache                                       | `prompt_tokens` includes cache                   | `input_tokens` includes cache              |
+| Stream            | `message_start`, `content_block_*`, `message_delta`, `message_stop` | `chat.completion.chunk`, `[DONE]`                | `response.*` events, `response.completed`  |
 
 **Rules from current Claude models** when the target is Claude:
 
@@ -980,19 +1004,19 @@ Anthropic's own OpenAI-compatible endpoint is **not** used. Its docs say it is "
 
 ### 8.14 HTTP API
 
-| Method and path | Purpose | Auth | Phase |
-|---|---|---|---|
-| `POST /v1/chat/completions` | Chat Completions, streaming and not | Client key | 1 |
-| `GET /v1/models` | Tiers, in OpenAI list format | Client key | 1 |
-| `GET /healthz` | Liveness | None | 1 |
-| `GET /readyz` | Config loaded and database reachable | None | 1 |
-| `GET /router/status` | Accounts, tiers, spend, episodes, recent events | Admin key | 1 |
-| `POST /router/accounts/:id/reset` | Clear a `disabled` or `exhausted` state | Admin key | 1 |
-| `POST /v1/messages`, `/v1/messages/count_tokens` | Anthropic Messages | Client key | 2 |
-| `GET /router/edge/plan`, `POST /router/edge/report` | Edge configuration and state | Client key | 2 |
-| `POST /v1/responses` | Responses API, for Codex | Client key | 3 |
-| `GET /router/codex/models` | Codex model catalog | Client key | 3 |
-| `GET /metrics` | Prometheus | Internal only | 5 |
+| Method and path                                     | Purpose                                         | Auth          | Phase |
+| --------------------------------------------------- | ----------------------------------------------- | ------------- | ----- |
+| `POST /v1/chat/completions`                         | Chat Completions, streaming and not             | Client key    | 1     |
+| `GET /v1/models`                                    | Tiers, in OpenAI list format                    | Client key    | 1     |
+| `GET /healthz`                                      | Liveness                                        | None          | 1     |
+| `GET /readyz`                                       | Config loaded and database reachable            | None          | 1     |
+| `GET /router/status`                                | Accounts, tiers, spend, episodes, recent events | Admin key     | 1     |
+| `POST /router/accounts/:id/reset`                   | Clear a `disabled` or `exhausted` state         | Admin key     | 1     |
+| `POST /v1/messages`, `/v1/messages/count_tokens`    | Anthropic Messages                              | Client key    | 2     |
+| `GET /router/edge/plan`, `POST /router/edge/report` | Edge configuration and state                    | Client key    | 2     |
+| `POST /v1/responses`                                | Responses API, for Codex                        | Client key    | 3     |
+| `GET /router/codex/models`                          | Codex model catalog                             | Client key    | 3     |
+| `GET /metrics`                                      | Prometheus                                      | Internal only | 5     |
 
 **Authentication.** `Authorization: Bearer llmr_…`, or `x-api-key`.
 
@@ -1001,7 +1025,9 @@ Anthropic's own OpenAI-compatible endpoint is **not** used. Its docs say it is "
 **Errors** use the OpenAI shape, so SDKs handle them normally:
 
 ```json
-{ "error": { "message": "...", "type": "router_error", "param": null, "code": "all_targets_failed" } }
+{
+  "error": { "message": "...", "type": "router_error", "param": null, "code": "all_targets_failed" }
+}
 ```
 
 ### 8.15 Data model
@@ -1080,7 +1106,7 @@ CREATE TABLE events (
 
 Phase 3 adds `session_pins`. Phase 5 adds `client_keys`, so keys can be managed from the dashboard.
 
-**Retention.** `requests` and `attempts` are kept for 90 days by a daily job. Aggregated daily usage is kept longer.
+**Retention (Phase 5).** A daily job keeps `requests` and `attempts` for 90 days, and aggregated daily usage for longer.
 
 ### 8.16 Pricing, budgets and the ledger
 
@@ -1088,17 +1114,17 @@ Phase 3 adds `session_pins`. Phase 5 adds `client_keys`, so keys can be managed 
 
 ```yaml
 version: "2026-11-18"
-default: { input: 10, output: 50 }   # conservative price for unknown models
+default: { input: 10, output: 50 } # conservative price for unknown models
 models:
-  gpt-6-astra:           { input: 10,   output: 50 }
-  gpt-6.1-sol:           { input: 2,    output: 10 }
-  gpt-6-luna:            { input: 0.10, output: 0.50 }
-  gemini-4-carbon:       { input: 4,    output: 20,   cached_input: 0.20 }   # price from 2026-12-01
-  gemini-4-hydrogen:     { input: 1.50, output: 7.50, cached_input: 0.075 }
+  gpt-6-astra: { input: 10, output: 50 }
+  gpt-6.1-sol: { input: 2, output: 10 }
+  gpt-6-luna: { input: 0.10, output: 0.50 }
+  gemini-4-carbon: { input: 4, output: 20, cached_input: 0.20 } # price from 2026-12-01
+  gemini-4-hydrogen: { input: 1.50, output: 7.50, cached_input: 0.075 }
   gemini-3.5-flash-lite: { input: 0.30, output: 2.50, cached_input: 0.03 }
-  claude-opus-5-5:       { input: 4,    output: 20,   cached_input: 0.20 }
-  claude-sonnet-5-5:     { input: 2,    output: 10,   cached_input: 0.10 }
-  claude-haiku-5-5:      { input: 0.10, output: 0.50 }
+  claude-opus-5-5: { input: 4, output: 20, cached_input: 0.20 }
+  claude-sonnet-5-5: { input: 2, output: 10, cached_input: 0.10 }
+  claude-haiku-5-5: { input: 0.10, output: 0.50 }
 ```
 
 **Budgets** apply per metered account, per UTC day and month:
@@ -1113,19 +1139,19 @@ Spend is an atomic `INSERT ... ON DUPLICATE KEY UPDATE`. Ledger writes go throug
 
 The VPS holds real API keys and is reachable from the internet, so security is part of Phase 1.
 
-| Threat | Control |
-|---|---|
-| Stranger calls the gateway | Every `/v1/*` route needs a client key of at least 32 random characters. Keys are compared as SHA-256 digests in constant time. |
-| Key guessing | Failed authentication is throttled per IP. |
-| A leaked client key burns money | Per-client `rpm` and concurrency limits, per-account budgets, one key per client so one can be revoked alone. |
-| Traffic interception | TLS at Caddy or Nginx. The gateway port is not published to the internet. |
-| Secrets in logs | Pino redacts `authorization`, `x-api-key` and related headers. Prompts and completions are never logged. Stored session identifiers are hashes. |
-| Secrets in git | `.env` is ignored. The config rejects inline secrets. CI can add a secret scan. |
-| Admin API exposure | A separate admin key, and the reverse proxy blocks `/router/*` from the internet by default. Use an SSH tunnel or Tailscale. |
-| Container escape | Runs as a non-root user with a read-only filesystem, no capabilities, and `no-new-privileges`. |
-| Dependency compromise | Few dependencies, locked versions, frozen installs, delayed adoption of new releases. |
-| Subscription tokens | The Claude token never reaches the VPS. ChatGPT tokens (Phase 4) sit in an owner-only file and are only sent to OpenAI. |
-| Request loops and abuse | Hop guard, body size limit and request deadline. |
+| Threat                          | Control                                                                                                                                                          |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stranger calls the gateway      | Every `/v1/*` route needs a client key of at least 32 random characters, checked before the body is read. Keys are compared as SHA-256 digests in constant time. |
+| Key guessing                    | Failed authentication is throttled per IP.                                                                                                                       |
+| A leaked client key burns money | Per-client `rpm` and concurrency limits, per-account budgets, one key per client so one can be revoked alone.                                                    |
+| Traffic interception            | TLS at Caddy or Nginx. The gateway port is not published to the internet.                                                                                        |
+| Secrets in logs                 | Pino redacts `authorization`, `x-api-key` and related headers. Prompts and completions are never logged. Stored session identifiers are hashes.                  |
+| Secrets in git                  | `.env` is ignored. The config rejects inline secrets. CI can add a secret scan.                                                                                  |
+| Admin API exposure              | A separate admin key, and the reverse proxy blocks `/router/*` from the internet by default. Use an SSH tunnel or Tailscale.                                     |
+| Container escape                | Runs as a non-root user with a read-only filesystem, no capabilities, and `no-new-privileges`.                                                                   |
+| Dependency compromise           | Few dependencies, locked versions, frozen installs, delayed adoption of new releases.                                                                            |
+| Subscription tokens             | The Claude token never reaches the VPS. ChatGPT tokens (Phase 4) sit in an owner-only file and are only sent to OpenAI.                                          |
+| Request loops and abuse         | Hop guard, body size limit and request deadline.                                                                                                                 |
 
 The host itself needs the usual care: SSH keys only, a firewall allowing only 22, 80 and 443, and automatic security updates.
 
@@ -1141,11 +1167,21 @@ Example status output:
 ```json
 {
   "accounts": [
-    { "id": "my-gateway", "costClass": "prepaid", "state": { "status": "exhausted", "retryAt": "2026-11-18T15:45:00Z" } },
-    { "id": "openai-key", "costClass": "metered", "state": { "status": "ok" },
-      "spend": { "dayUsd": 1.2, "dayLimitUsd": 5, "monthUsd": 9.4, "monthLimitUsd": 50 } }
+    {
+      "id": "my-gateway",
+      "costClass": "prepaid",
+      "state": { "status": "exhausted", "retryAt": "2026-11-18T15:45:00Z" }
+    },
+    {
+      "id": "openai-key",
+      "costClass": "metered",
+      "state": { "status": "ok" },
+      "spend": { "dayUsd": 1.2, "dayLimitUsd": 5, "monthUsd": 9.4, "monthLimitUsd": 50 }
+    }
   ],
-  "fallbacks": [ { "requestedTier": "frontier", "servedTier": "medium", "since": "2026-11-18T14:02:11Z" } ]
+  "fallbacks": [
+    { "requestedTier": "frontier", "servedTier": "medium", "since": "2026-11-18T14:02:11Z" }
+  ]
 }
 ```
 
@@ -1159,15 +1195,15 @@ Access is protected by a single-user login, and it can additionally sit behind T
 
 ### 8.20 Testing
 
-| Level | What it covers |
-|---|---|
-| **Unit** | Resolver, planner, classifier, quota state machine (fake clock), SSE parser, budgets, notices. |
-| **End to end** | The real gateway against a scriptable fake upstream, over real HTTP: streaming, failover, fallback, mid-stream failure, keep-alives and client disconnects. |
-| **Contract** | The official `openai` SDK as a client, for streaming, tools and error handling. |
-| **Database** | Migrations and budget counters against real MySQL in CI. |
-| **Fixtures** | Recorded, scrubbed upstream responses from Phase 0, including your New API instance. |
-| **Client smoke tests** | OpenCode, Pi, Open WebUI, and later Claude Code and Codex, run by hand at each release. |
-| **Load (Phase 5)** | Added latency and memory per stream against the fake upstream. |
+| Level                  | What it covers                                                                                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Unit**               | Resolver, planner, classifier, quota state machine (fake clock), SSE parser, budgets, notices.                                                              |
+| **End to end**         | The real gateway against a scriptable fake upstream, over real HTTP: streaming, failover, fallback, mid-stream failure, keep-alives and client disconnects. |
+| **Contract**           | The official `openai` SDK as a client, for streaming, tools and error handling.                                                                             |
+| **Database**           | Migrations and budget counters against real MySQL in CI.                                                                                                    |
+| **Fixtures**           | Recorded, scrubbed upstream responses from Phase 0, including your New API instance.                                                                        |
+| **Client smoke tests** | OpenCode, Pi, Open WebUI, and later Claude Code and Codex, run by hand at each release.                                                                     |
+| **Load (Phase 5)**     | Added latency and memory per stream against the fake upstream.                                                                                              |
 
 `pnpm demo` runs the whole fallback story locally with fake upstreams and no credentials.
 
@@ -1196,10 +1232,10 @@ Only the reverse proxy publishes ports. MySQL and the gateway stay on the privat
 
 ### 9.2 Sizing
 
-| Setup | Suggested VPS |
-|---|---|
+| Setup             | Suggested VPS               |
+| ----------------- | --------------------------- |
 | Gateway and MySQL | 2 vCPU, 2 GB RAM, 20 GB SSD |
-| With Open WebUI | 2 vCPU, 4 GB RAM, 40 GB SSD |
+| With Open WebUI   | 2 vCPU, 4 GB RAM, 40 GB SSD |
 
 These are starting points. The gateway mostly waits on the network.
 
@@ -1207,10 +1243,16 @@ These are starting points. The gateway mostly waits on the network.
 
 ```bash
 git clone <repo> /opt/llm-router && cd /opt/llm-router
-cp .env.example .env                 # fill in keys; chmod 600 .env
+cp .env.example .env && chmod 600 .env
 cp config/config.example.yaml config/config.yaml
-pnpm --filter gateway exec tsx src/cli.ts keygen   # or: docker compose run --rm gateway node dist/cli.js keygen
-docker compose --profile caddy up -d             # add --profile chat for Open WebUI
+
+docker compose build gateway
+docker compose run --rm --no-deps gateway node dist/cli.js keygen \
+  LLMR_ADMIN_KEY LLMR_KEY_OPENCODE LLMR_KEY_PI LLMR_KEY_CHAT_UI LLMR_KEY_SCRIPTS
+# Put the keys, provider credentials and database passwords in .env, then edit config.yaml.
+
+docker compose run --rm --no-deps gateway node dist/cli.js check-config
+docker compose --profile caddy up -d    # add --profile chat for Open WebUI
 curl https://llm.example.com/healthz
 ```
 
@@ -1222,7 +1264,7 @@ location /v1/ {
     proxy_http_version 1.1;
     proxy_set_header Connection "";
     proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-For $remote_addr;  # a client must not be able to fake this
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_buffering off;
     proxy_request_buffering off;
@@ -1234,9 +1276,9 @@ location /v1/ {
 
 ### 9.4 Updates and rollback
 
-| Stage | Flow |
-|---|---|
-| **Phase 1** | `git pull && docker compose up -d --build` on the VPS. |
+| Stage       | Flow                                                                                                                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Phase 1** | `git pull && docker compose up -d --build` on the VPS.                                                                                                                                                       |
 | **Phase 5** | GitHub Actions builds an image tagged with the commit SHA and pushes it to GHCR. A deploy job or a manual `docker compose pull && docker compose up -d` applies it. Rollback means pinning the previous tag. |
 
 Migrations run at startup, are additive, and are compatible with the previous release.
@@ -1262,12 +1304,12 @@ flowchart LR
   S3 --> S4["Stage 4<br/>multi-user service<br/>managed data, Kubernetes"]
 ```
 
-| Stage | Move here when | What runs | What changes in the code |
-|---|---|---|---|
-| **1. Single instance** | Now | 1 gateway, MySQL, reverse proxy | Nothing. State is in memory with write-through to MySQL. |
-| **2. Several instances** | CPU stays above about 60%, or you want zero-downtime deploys | 2–4 gateway containers behind the proxy, plus Redis | `QuotaStore`, budget reservations, pins, rate limits and fallback episodes move to Redis behind the same interfaces. |
-| **3. Two hosts** | A VPS failure would hurt too much | Active VPS and standby VPS in different supported regions, replicated MySQL, DNS or load-balancer failover | Health-based failover. Each host gets its own ChatGPT host ID, and only one refreshes tokens at a time. |
-| **4. Multi-user** | Other people use it | Kubernetes or a managed container service, managed MySQL and Redis, object storage for exports | Per-user accounts and credentials, reservation-based budgets, organizations, audit log. Each person connects **their own** subscriptions. |
+| Stage                    | Move here when                                               | What runs                                                                                                  | What changes in the code                                                                                                                  |
+| ------------------------ | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **1. Single instance**   | Now                                                          | 1 gateway, MySQL, reverse proxy                                                                            | Nothing. State is in memory with write-through to MySQL.                                                                                  |
+| **2. Several instances** | CPU stays above about 60%, or you want zero-downtime deploys | 2–4 gateway containers behind the proxy, plus Redis                                                        | `QuotaStore`, budget reservations, pins, rate limits and fallback episodes move to Redis behind the same interfaces.                      |
+| **3. Two hosts**         | A VPS failure would hurt too much                            | Active VPS and standby VPS in different supported regions, replicated MySQL, DNS or load-balancer failover | Health-based failover. Each host gets its own ChatGPT host ID, and only one refreshes tokens at a time.                                   |
+| **4. Multi-user**        | Other people use it                                          | Kubernetes or a managed container service, managed MySQL and Redis, object storage for exports             | Per-user accounts and credentials, reservation-based budgets, organizations, audit log. Each person connects **their own** subscriptions. |
 
 **Design rules that keep this possible:**
 
@@ -1296,52 +1338,52 @@ flowchart LR
   P5 --> P6["P6 Scale"]
 ```
 
-| Phase | What you get | Rough size for one developer |
-|---|---|---|
-| **0. Verify** | Real responses recorded, and the plan rules tested on your accounts | 1–2 days, alongside Phase 1 |
-| **1. MVP** | One HTTPS endpoint with tiers, failover, fallback and warnings, budgets, and third-party gateways. OpenCode, Pi, chat UI and scripts work. | About 1 week |
-| **2. Claude Code** | Claude Code on your plan, continuing on an Anthropic key when the plan runs out | About 1 week |
-| **3. Translation** | Any client can reach any model, Claude Code can continue on GPT or Gemini, Codex works, and conversations stay pinned | 2–3 weeks |
-| **4. ChatGPT plan** | Your ChatGPT plan serves every client | About 1 week |
-| **5. Dashboard and hardening** | Web dashboard, usage reports, metrics, CI/CD deploys, load tests | 2–3 weeks |
-| **6. Scale** | Redis, several instances, a second host, and optionally multiple users | Open-ended |
+| Phase                          | What you get                                                                                                                               | Rough size for one developer |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
+| **0. Verify**                  | Real responses recorded, and the plan rules tested on your accounts                                                                        | 1–2 days, alongside Phase 1  |
+| **1. MVP**                     | One HTTPS endpoint with tiers, failover, fallback and warnings, budgets, and third-party gateways. OpenCode, Pi, chat UI and scripts work. | About 1 week                 |
+| **2. Claude Code**             | Claude Code on your plan, continuing on an Anthropic key when the plan runs out                                                            | About 1 week                 |
+| **3. Translation**             | Any client can reach any model, Claude Code can continue on GPT or Gemini, Codex works, and conversations stay pinned                      | 2–3 weeks                    |
+| **4. ChatGPT plan**            | Your ChatGPT plan serves every client                                                                                                      | About 1 week                 |
+| **5. Dashboard and hardening** | Web dashboard, usage reports, metrics, CI/CD deploys, load tests                                                                           | 2–3 weeks                    |
+| **6. Scale**                   | Redis, several instances, a second host, and optionally multiple users                                                                     | Open-ended                   |
 
 ---
 
 ## 12. Decisions and trade-offs
 
-| # | Decision | Rejected | Why |
-|---|---|---|---|
-| D1 | TypeScript on Node.js | Python, Go | Your preference and a single language across services. Node handles streaming I/O well. Go remains a possible port if a single binary matters later. |
-| D2 | Fastify for the gateway, Next.js only for the dashboard | One Next.js app | Long-lived proxy streams and a web UI have different needs. |
-| D3 | MySQL | MongoDB, PostgreSQL | Relational data, and your preference. PostgreSQL would also work. |
-| D4 | VPS-first, with a small edge for Claude Code | Sending the Claude token through the VPS | It keeps the login off an internet-facing server, keeps plan traffic on your normal network, matches Anthropic's wording most closely, and survives a VPS outage. The cost is one local process. |
-| D5 | Chat Completions first | Starting with translation | It covers four of six client types with one adapter pair. |
-| D6 | Automatic tier fallback, with warnings | Returning an error | Your stated preference. A task should not fail because a tier ran out. |
-| D7 | `prefer: quality` by default | Falling back before spending | "Frontier" keeps meaning frontier until the budget is reached. `prefer: cost` flips it per tier. |
-| D8 | A visible note in the reply, opt-in per client | Headers only | Most interactive clients never show headers, so a warning there would go unseen. |
-| D9 | Fail over only before the commit point | Splicing streams | Splicing produces incoherent text and can repeat tool calls. |
-| D10 | Never fail over on refusals | Trying another provider | The router should not shop for a model that will comply. |
-| D11 | Compat profiles for third-party gateways | Per-vendor code | New gateways become configuration. |
-| D12 | Gemini through an API key and plan credit | Using the plan login | Google warns of suspension or termination. |
-| D13 | Open WebUI for chat | Building a chat UI | Mature, popular and already compatible. |
-| D14 | Ordered lists as routing policy | Weights or optimizers | Predictable and easy to debug. |
+| #   | Decision                                                | Rejected                                 | Why                                                                                                                                                                                              |
+| --- | ------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D1  | TypeScript on Node.js                                   | Python, Go                               | Your preference and a single language across services. Node handles streaming I/O well. Go remains a possible port if a single binary matters later.                                             |
+| D2  | Fastify for the gateway, Next.js only for the dashboard | One Next.js app                          | Long-lived proxy streams and a web UI have different needs.                                                                                                                                      |
+| D3  | MySQL                                                   | MongoDB, PostgreSQL                      | Relational data, and your preference. PostgreSQL would also work.                                                                                                                                |
+| D4  | VPS-first, with a small edge for Claude Code            | Sending the Claude token through the VPS | It keeps the login off an internet-facing server, keeps plan traffic on your normal network, matches Anthropic's wording most closely, and survives a VPS outage. The cost is one local process. |
+| D5  | Chat Completions first                                  | Starting with translation                | It covers four of six client types with one adapter pair.                                                                                                                                        |
+| D6  | Automatic tier fallback, with warnings                  | Returning an error                       | Your stated preference. A task should not fail because a tier ran out.                                                                                                                           |
+| D7  | `prefer: quality` by default                            | Falling back before spending             | "Frontier" keeps meaning frontier until the budget is reached. `prefer: cost` flips it per tier.                                                                                                 |
+| D8  | A visible note in the reply, opt-in per client          | Headers only                             | Most interactive clients never show headers, so a warning there would go unseen.                                                                                                                 |
+| D9  | Fail over only before the commit point                  | Splicing streams                         | Splicing produces incoherent text and can repeat tool calls.                                                                                                                                     |
+| D10 | Never fail over on refusals                             | Trying another provider                  | The router should not shop for a model that will comply.                                                                                                                                         |
+| D11 | Compat profiles for third-party gateways                | Per-vendor code                          | New gateways become configuration.                                                                                                                                                               |
+| D12 | Gemini through an API key and plan credit               | Using the plan login                     | Google warns of suspension or termination.                                                                                                                                                       |
+| D13 | Open WebUI for chat                                     | Building a chat UI                       | Mature, popular and already compatible.                                                                                                                                                          |
+| D14 | Ordered lists as routing policy                         | Weights or optimizers                    | Predictable and easy to debug.                                                                                                                                                                   |
 
 ---
 
 ## 13. Risks and open questions
 
-| Risk | Mitigation |
-|---|---|
+| Risk                                                                                                                                                     | Mitigation                                                                                                                               |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | **Anthropic's rules on intermediating login tokens.** Even a local helper might be judged against that wording, and enforcement may come without notice. | The token stays local and goes only to Anthropic. Claude Code can run without the edge at any time. Ask Anthropic if you want certainty. |
-| **OpenAI's route does not address gateways that forward other clients' requests.** | Keep it single-user, keep the repository open source, and put it behind `enabled: false`. Other targets take over if it stops working. |
-| **Plan rules change again.** | Section 3 is re-checked per phase. One account can be turned off without affecting others. |
-| **A leaked client key or a compromised VPS.** | Section 8.17, low budgets, and provider-side spend limits. Rotate keys if in doubt. |
-| **The VPS is a single point of failure.** | Restart policies and an uptime monitor now, Stage 3 later. Claude Code's plan traffic keeps working regardless. |
-| **Third-party gateways differ or misreport models.** | Compat profiles, defensive classification, trust levels, and a mismatch log. |
-| **Fallback quietly lowers quality in long agent runs.** | Notes, headers and push notifications, plus `X-LLMR-No-Fallback` where quality matters more than completion. |
-| **Translation quality differs across providers** (Phase 3). | Pins limit switching, and golden tests cover the codecs. |
-| **Metered spend surprises.** | Budgets on by default, notification on the first metered use each day, and provider-side caps. |
+| **OpenAI's route does not address gateways that forward other clients' requests.**                                                                       | Keep it single-user, keep the repository open source, and put it behind `enabled: false`. Other targets take over if it stops working.   |
+| **Plan rules change again.**                                                                                                                             | Section 3 is re-checked per phase. One account can be turned off without affecting others.                                               |
+| **A leaked client key or a compromised VPS.**                                                                                                            | Section 8.17, low budgets, and provider-side spend limits. Rotate keys if in doubt.                                                      |
+| **The VPS is a single point of failure.**                                                                                                                | Restart policies and an uptime monitor now, Stage 3 later. Claude Code's plan traffic keeps working regardless.                          |
+| **Third-party gateways differ or misreport models.**                                                                                                     | Compat profiles, defensive classification, trust levels, and a mismatch log.                                                             |
+| **Fallback quietly lowers quality in long agent runs.**                                                                                                  | Notes, headers and push notifications, plus `X-LLMR-No-Fallback` where quality matters more than completion.                             |
+| **Translation quality differs across providers** (Phase 3).                                                                                              | Pins limit switching, and golden tests cover the codecs.                                                                                 |
+| **Metered spend surprises.**                                                                                                                             | Budgets on by default, notification on the first metered use each day, and provider-side caps.                                           |
 
 **Open questions for you:**
 
@@ -1371,15 +1413,15 @@ Replace `https://llm.example.com` with your gateway. These examples are built fr
       "package": "@opencode/ai/providers/openai-compatible",
       "settings": {
         "baseURL": "https://llm.example.com/v1",
-        "apiKey": "{env:LLMR_KEY_OPENCODE}"
+        "apiKey": "{env:LLMR_KEY_OPENCODE}",
       },
       "models": {
         "frontier": { "limit": { "context": 200000, "output": 32000 } },
-        "medium":   { "limit": { "context": 200000, "output": 32000 } },
-        "flash":    { "limit": { "context": 200000, "output": 32000 } }
-      }
-    }
-  }
+        "medium": { "limit": { "context": 200000, "output": 32000 } },
+        "flash": { "limit": { "context": 200000, "output": 32000 } },
+      },
+    },
+  },
 }
 ```
 
@@ -1398,9 +1440,33 @@ Replace `https://llm.example.com` with your gateway. These examples are built fr
       "authHeader": true,
       "compat": { "sendSessionAffinityHeaders": true },
       "models": [
-        { "id": "frontier", "name": "Frontier", "reasoning": true,  "input": ["text", "image"], "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 200000, "maxTokens": 32000 },
-        { "id": "medium",   "name": "Medium",   "reasoning": true,  "input": ["text", "image"], "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 200000, "maxTokens": 32000 },
-        { "id": "flash",    "name": "Flash",    "reasoning": false, "input": ["text", "image"], "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 200000, "maxTokens": 32000 }
+        {
+          "id": "frontier",
+          "name": "Frontier",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "contextWindow": 200000,
+          "maxTokens": 32000
+        },
+        {
+          "id": "medium",
+          "name": "Medium",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "contextWindow": 200000,
+          "maxTokens": 32000
+        },
+        {
+          "id": "flash",
+          "name": "Flash",
+          "reasoning": false,
+          "input": ["text", "image"],
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "contextWindow": 200000,
+          "maxTokens": 32000
+        }
       ]
     }
   }
@@ -1411,9 +1477,11 @@ Replace `https://llm.example.com` with your gateway. These examples are built fr
 
 Admin Settings → Connections → add an OpenAI connection:
 
-- URL: `https://llm.example.com/v1`, or `http://gateway:4141/v1` when it runs in the same Compose project
+- URL: `https://llm.example.com/v1`
 - Key: the `chat-ui` client key
 - Headers: `{ "X-Session-Id": "{{CHAT_ID}}" }`
+
+The `chat` profile in `docker-compose.yml` sets this up for you. It connects to `http://gateway:4141/v1` and forwards the chat ID through `X-OpenWebUI-Chat-Id`.
 
 ### LibreChat (Phase 1)
 
@@ -1497,17 +1565,17 @@ Run it with `codex --profile llmr`.
 
 **From Draft 1:**
 
-| Area | Draft 1 | Draft 2 |
-|---|---|---|
-| Where it runs | Your laptop | Your VPS |
-| Language | Python, Starlette | TypeScript, Fastify |
-| Database | SQLite, then Postgres | MySQL from Phase 1 |
-| Claude plan | Passes through the router | Stays on the laptop through the edge |
-| Gemini plan | Not considered | Login ruled out, monthly credit used through an API key |
-| Tier exhausted | Error by default | Automatic fallback with warnings |
-| Third-party gateways | A config example | A first-class account type |
-| First phase | Same-dialect lanes for Claude Code and OpenAI clients | OpenAI-compatible gateway on the VPS |
-| Security | Mostly Phase 4 | Phase 1 |
+| Area                 | Draft 1                                               | Draft 2                                                 |
+| -------------------- | ----------------------------------------------------- | ------------------------------------------------------- |
+| Where it runs        | Your laptop                                           | Your VPS                                                |
+| Language             | Python, Starlette                                     | TypeScript, Fastify                                     |
+| Database             | SQLite, then Postgres                                 | MySQL from Phase 1                                      |
+| Claude plan          | Passes through the router                             | Stays on the laptop through the edge                    |
+| Gemini plan          | Not considered                                        | Login ruled out, monthly credit used through an API key |
+| Tier exhausted       | Error by default                                      | Automatic fallback with warnings                        |
+| Third-party gateways | A config example                                      | A first-class account type                              |
+| First phase          | Same-dialect lanes for Claude Code and OpenAI clients | OpenAI-compatible gateway on the VPS                    |
+| Security             | Mostly Phase 4                                        | Phase 1                                                 |
 
 **From `ROUTER_DESIGN.md`:**
 

@@ -4,15 +4,15 @@ This is the working checklist. [`DESIGN.md`](DESIGN.md) explains why. Each phase
 
 **Status key:** `[ ]` not started · `[~]` in progress · `[x]` done · **(you)** needs your accounts, keys or a decision
 
-| Phase | Goal | Size | Status |
-|---|---|---|---|
-| [0](#phase-0--verify-with-real-accounts) | Verify assumptions with real accounts | 1–2 days | Not started |
-| [1](#phase-1--mvp-gateway-on-the-vps) | MVP gateway on the VPS | ~1 week | In progress |
-| [2](#phase-2--claude-code-lane) | Claude Code lane | ~1 week | Not started |
-| [3](#phase-3--translation-codex-and-pins) | Translation, Codex and pins | 2–3 weeks | Not started |
-| [4](#phase-4--chatgpt-plan) | ChatGPT plan | ~1 week | Not started |
-| [5](#phase-5--dashboard-and-hardening) | Dashboard and hardening | 2–3 weeks | Not started |
-| [6](#phase-6--scale) | Scale | Open-ended | Not started |
+| Phase                                     | Goal                                  | Size       | Status                        |
+| ----------------------------------------- | ------------------------------------- | ---------- | ----------------------------- |
+| [0](#phase-0--verify-with-real-accounts)  | Verify assumptions with real accounts | 1–2 days   | Not started                   |
+| [1](#phase-1--mvp-gateway-on-the-vps)     | MVP gateway on the VPS                | ~1 week    | Code done; deployment pending |
+| [2](#phase-2--claude-code-lane)           | Claude Code lane                      | ~1 week    | Not started                   |
+| [3](#phase-3--translation-codex-and-pins) | Translation, Codex and pins           | 2–3 weeks  | Not started                   |
+| [4](#phase-4--chatgpt-plan)               | ChatGPT plan                          | ~1 week    | Not started                   |
+| [5](#phase-5--dashboard-and-hardening)    | Dashboard and hardening               | 2–3 weeks  | Not started                   |
+| [6](#phase-6--scale)                      | Scale                                 | Open-ended | Not started                   |
 
 ---
 
@@ -62,66 +62,66 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 
 **Project setup**
 
-- [ ] pnpm workspace, TypeScript strict mode, ESLint, Prettier, Vitest
-- [ ] GitHub Actions: lint, type-check, test, Docker build
-- [ ] `.gitignore`, `.env.example`, README
+- [x] pnpm workspace, TypeScript strict mode, ESLint, Prettier, Vitest
+- [x] GitHub Actions: lint, type-check, test, Docker build
+- [x] `.gitignore`, `.env.example`, README
 
 **Configuration and security**
 
-- [ ] YAML config with Zod validation and clear errors
-- [ ] Environment-variable secrets, and rejection of inline secrets
-- [ ] Client keys, compared as hashes in constant time
-- [ ] Failed-auth throttle, per-client RPM and concurrency limits, body size limit
-- [ ] Log redaction, with no prompts or completions in logs
-- [ ] `keygen` and `check-config` commands
+- [x] YAML config with Zod validation and clear errors
+- [x] Environment-variable secrets, and rejection of inline secrets
+- [x] Client keys, compared as hashes in constant time
+- [x] Failed-auth throttle, per-client RPM and concurrency limits, body size limit
+- [x] Log redaction, with no prompts or completions in logs
+- [x] `keygen` and `check-config` commands
 
 **Request path**
 
-- [ ] `POST /v1/chat/completions`, streaming and non-streaming
-- [ ] `GET /v1/models`, `GET /healthz`, `GET /readyz`
-- [ ] Resolver: tiers, aliases, exact model IDs, `X-LLMR-Tier`, `X-LLMR-No-Fallback`
-- [ ] Planner: ordered targets, fallback tiers, `prefer: quality | cost`
-- [ ] Executor: attempts, deadlines, client-disconnect handling
-- [ ] SSE parser, commit point, held events and keep-alives
-- [ ] Mid-stream failure handling, with no splicing
+- [x] `POST /v1/chat/completions`, streaming and non-streaming
+- [x] `GET /v1/models`, `GET /healthz`, `GET /readyz`
+- [x] Resolver: tiers, aliases, exact model IDs, `X-LLMR-Tier`, `X-LLMR-No-Fallback`
+- [x] Planner: ordered targets, fallback tiers, `prefer: quality | cost`
+- [x] Executor: attempts, deadlines, client-disconnect handling
+- [x] SSE parser, commit point, held events and keep-alives
+- [x] Mid-stream failure handling, with no splicing
 
 **Upstreams**
 
-- [ ] OpenAI-compatible adapter
-- [ ] Compat profiles: `openai`, `gemini`, `new_api`, `openrouter`, `generic`
-- [ ] Error classifier for HTTP errors, `200` bodies with errors, and stream errors
-- [ ] New API and OpenRouter error rules, with tests
-- [ ] Gemini tool-call `extra_content` store
-- [ ] Hop guard against request loops
+- [x] OpenAI-compatible adapter
+- [x] Compat profiles: `openai`, `gemini`, `new_api`, `openrouter`, `generic`
+- [x] Error classifier for HTTP errors, `200` bodies with errors, and stream errors
+- [x] New API and OpenRouter error rules, with tests
+- [x] Gemini tool-call `extra_content` store
+- [x] Hop guard against request loops
 
 **State and money**
 
-- [ ] Quota state machine with probing
-- [ ] Memory store, and MySQL persistence for long-lived states
-- [ ] Pricing file, budget reservation and settlement
-- [ ] Request and attempt ledger with an asynchronous writer
-- [ ] MySQL schema and migrations with Drizzle
+- [x] Quota state machine with probing
+- [x] Memory store, and MySQL persistence for long-lived states
+- [x] Pricing file, budget reservation and settlement
+- [x] Request and attempt ledger with an asynchronous writer
+- [x] MySQL schema and migrations with Drizzle
 
 **Warnings**
 
-- [ ] `x-llmr-*` response headers
-- [ ] In-reply notice for `notice: text` clients, once per conversation per episode
-- [ ] Fallback episodes, with ntfy and webhook notifications
-- [ ] `GET /router/status` and account reset
+- [x] `x-llmr-*` response headers
+- [x] In-reply notice for `notice: text` clients, once per conversation per episode
+- [x] Fallback episodes, with ntfy and webhook notifications
+- [x] `GET /router/status` and account reset
 
 **Deployment**
 
-- [ ] Dockerfile: multi-stage, non-root, health check
-- [ ] Compose: gateway, MySQL, optional Caddy, optional Open WebUI
-- [ ] Caddyfile and Nginx example
-- [ ] `pnpm demo`, which shows the fallback story with no credentials
+- [x] Dockerfile: multi-stage, non-root, health check
+- [x] Compose: gateway, MySQL, optional Caddy, optional Open WebUI
+- [x] Caddyfile and Nginx example
+- [x] `pnpm demo`, which shows the fallback story with no credentials
 
 **Exit criteria**
 
-- [ ] Automated: the OpenAI SDK streams from `medium` through the gateway, including a tool call.
-- [ ] Automated: when `frontier` targets return quota errors, the same request is answered by `medium`, with headers, a visible note and one notification.
-- [ ] Automated: reaching a budget skips that target, and spend survives a restart.
-- [ ] Automated: a failure after streaming starts gives an error event, never a spliced answer.
+- [x] Automated: the OpenAI SDK streams from `medium` through the gateway, including a tool call.
+- [x] Automated: when `frontier` targets return quota errors, the same request is answered by `medium`, with headers, a visible note and one notification.
+- [x] Automated: reaching a budget skips that target, and spend survives a restart.
+- [x] Automated: a failure after streaming starts gives an error event, never a spliced answer.
 - [ ] **(you)** Deployed on the VPS with TLS.
 - [ ] **(you)** OpenCode, Pi and your chat UI complete a real conversation through it.
 
