@@ -23,6 +23,8 @@ export class MemorySharedState {
   readonly holds = new Map<string, Map<string, number>>();
   readonly leases = new Map<string, Map<string, number>>();
   readonly clients = new Set<MemoryBackend>();
+  /** Loses every message, as a brief disconnect would. */
+  dropMessages = false;
   private up = true;
 
   constructor(readonly now: () => number = Date.now) {}
@@ -121,6 +123,7 @@ export class MemoryBackend implements SharedBackend {
 
   async publish(text: string): Promise<void> {
     this.check();
+    if (this.shared.dropMessages) return;
     for (const client of this.shared.clients) {
       // Redis delivers messages later too, so nothing may rely on them arriving at once.
       queueMicrotask(() => client.deliver(text));

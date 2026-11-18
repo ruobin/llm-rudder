@@ -2,6 +2,8 @@ import type { Logger } from "pino";
 import type { SharedBackend } from "./backend.js";
 
 const HEARTBEAT_MS = 5_000;
+/** Messages can be lost during a reconnect, so instances compare notes this often. */
+const BEATS_PER_SYNC = 12;
 const INSTANCE_EXPIRY_MS = 20_000;
 const INSTANCES_MAP = "instances";
 
@@ -31,6 +33,7 @@ export class Cluster {
   private syncing: Promise<void> | null = null;
   private syncAgain = false;
   private usingOwnState = false;
+  private beats = 0;
   private instances = new Map<string, InstanceRecord>();
 
   constructor(
@@ -178,8 +181,18 @@ export class Cluster {
     await this.syncing;
     this.on("cluster.changed", () => this.background(() => this.beat()));
     this.publish("cluster.changed", {});
-    this.heartbeat = setInterval(() => void this.beat(), HEARTBEAT_MS);
+    this.heartbeat = setInterval(() => {
+      this.beats += 1;
+      if (this.beats % BEATS_PER_SYNC === 0) this.sync();
+      else void this.beat();
+    }, HEARTBEAT_MS);
     this.heartbeat.unref();
+  }
+
+  /** Compares this instance with the shared state now, and waits until that is done. */
+  async resync(): Promise<void> {
+    this.sync();
+    await this.settled();
   }
 
   /** Resolves when the work this instance started has finished. */

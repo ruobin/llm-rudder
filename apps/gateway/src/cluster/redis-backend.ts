@@ -130,7 +130,13 @@ export class RedisBackend implements SharedBackend {
     // The subscriber reconnects by itself, so its errors only need to be handled.
     this.subscriber.on("error", () => undefined);
     this.subscriber.on("message", (_channel: string, text: string) => events.onMessage(text));
-    this.subscriber.on("ready", () => void this.subscriber.subscribe(channel).catch(() => null));
+    // Messages sent while it was away are gone, so a new subscription starts with a sync.
+    this.subscriber.on("ready", () => {
+      this.subscriber.subscribe(channel).then(
+        () => events.onReady(),
+        () => undefined,
+      );
+    });
     // A first failure is not fatal. Both connections keep trying in the background.
     await Promise.allSettled([this.subscriber.connect(), this.commands.connect()]);
   }

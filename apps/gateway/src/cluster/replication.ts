@@ -14,18 +14,18 @@ import { parsePinValue } from "./backend.js";
 
 const ARTIFACT_TTL_MS = 6 * 60 * 60_000;
 const MAX_ARTIFACTS_PER_REQUEST = 200;
+/** A cleared state stays on record this long, so a lost message cannot bring it back. */
+const CLEARED_STATE_TTL_MS = 24 * 60 * 60_000;
 
 const quotaField = (record: { accountId: string; scope: string }) =>
   `${record.accountId}\u0000${record.scope}`;
 const toolExtraKey = (clientId: string, callId: string) => `extra:${clientId}\u0000${callId}`;
 const reasoningKey = (clientId: string, callId: string) => `reasoning:${clientId}\u0000${callId}`;
 
-function replicateQuota({ cluster, quota }: Runtime): void {
+function replicateQuota({ cluster, quota, now }: Runtime): void {
   const store = (record: QuotaRecord) =>
     cluster.background((backend) =>
-      record.state
-        ? backend.mapSet("quota", quotaField(record), JSON.stringify(record))
-        : backend.mapDelete("quota", quotaField(record)),
+      backend.mapSet("quota", quotaField(record), JSON.stringify(record)),
     );
   quota.replicateTo({
     instanceId: cluster.instanceId,
@@ -43,6 +43,9 @@ function replicateQuota({ cluster, quota }: Runtime): void {
       const record = JSON.parse(text) as QuotaRecord;
       shared.set(field, record);
       quota.applyRecord(record);
+      if (record.state === null && record.at < now() - CLEARED_STATE_TTL_MS) {
+        cluster.background((backend) => backend.mapDelete("quota", field));
+      }
     }
     // Whatever changed here while the shared state was away goes back to it.
     for (const record of quota.records()) {
@@ -111,9 +114,9 @@ function replicateEpisodes({ cluster, episodes }: Runtime): void {
   cluster.onSync(async () => {
     const entries = await cluster.attempt((backend) => backend.mapEntries("episodes"));
     if (!entries.ok) return;
-    for (const [tier, text] of entries.value) {
-      episodes.applyRecord(tier, JSON.parse(text) as EpisodeRecord);
-    }
+    const shared = new Map<string, EpisodeRecord>();
+    for (const [tier, text] of entries.value) shared.set(tier, JSON.parse(text) as EpisodeRecord);
+    episodes.reconcile(shared);
   });
 }
 
@@ -144,12 +147,13 @@ function replicateNotifications({ cluster, notifier }: Runtime): void {
 
 function replicateSettings(runtime: Runtime): void {
   const { cluster, clients, persistence, edgeReports, log } = runtime;
-  cluster.on("clients.changed", () => {
-    void persistence
+  const reloadClients = () =>
+    persistence
       .loadClientKeys()
       .then((keys: StoredClientKey[]) => clients.load(keys))
       .catch((error: unknown) => log.warn({ err: error }, "client keys could not be reloaded"));
-  });
+  cluster.on("clients.changed", () => void reloadClients());
+  cluster.onSync(reloadClients);
   cluster.on("config.reload", () => {
     try {
       reloadConfig(runtime);

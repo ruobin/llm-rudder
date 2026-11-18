@@ -4,6 +4,7 @@
  *
  * Run it with: pnpm load-test
  * Larger run: LOAD_STREAMS=2000 LOAD_REQUESTS=20000 pnpm load-test
+ * With shared state: LOAD_REDIS_URL=redis://127.0.0.1:6379/0 pnpm load-test
  */
 import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -69,6 +70,8 @@ function startGateway() {
         LOG_LEVEL: "error",
         LLMR_CONFIG: join(directory, "config.yaml"),
         LLMR_DRAIN_S: "1",
+        // Set LOAD_REDIS_URL to measure with state shared through Redis.
+        ...(process.env.LOAD_REDIS_URL ? { REDIS_URL: process.env.LOAD_REDIS_URL } : {}),
         LOAD_ADMIN_KEY: ADMIN_KEY,
         LOAD_CLIENT_KEY: CLIENT_KEY,
         LOAD_UPSTREAM_URL: upstream.url,

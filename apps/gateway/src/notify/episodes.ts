@@ -22,6 +22,8 @@ export interface EpisodeReplication {
 }
 
 const MAX_NOTICED_SESSIONS = 5000;
+/** A new episode may not have reached the shared state yet. */
+const NEW_EPISODE_MS = 30_000;
 
 /**
  * Tracks periods when a tier is being served by another tier, so warnings are
@@ -46,6 +48,15 @@ export class FallbackEpisodes {
       return;
     }
     this.active.set(tier, { ...record, noticed: this.active.get(tier)?.noticed ?? new Set() });
+  }
+
+  /** Matches the shared list, which also ends episodes whose end was never heard. */
+  reconcile(shared: Map<string, EpisodeRecord>): void {
+    for (const [tier, record] of shared) this.applyRecord(tier, record);
+    const settled = this.now() - NEW_EPISODE_MS;
+    for (const [tier, episode] of this.active) {
+      if (!shared.has(tier) && episode.since < settled) this.active.delete(tier);
+    }
   }
 
   applyNotice(tier: string, key: string): void {

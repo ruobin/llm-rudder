@@ -17,6 +17,7 @@ import { MemoryPersistence } from "../src/ledger/records.js";
 import {
   ADMIN_KEY,
   CHAT_KEY,
+  CLAUDE_KEY,
   LIMITED_KEY,
   MODELS,
   PRICING,
@@ -35,7 +36,9 @@ clients:
   - { id: chat, key_env: CHAT_KEY, notice: text }
   - { id: script, key_env: SCRIPT_KEY, notice: none, rpm: 3 }
   - { id: limited, key_env: LIMITED_KEY, notice: none, max_concurrent: 1 }
+  - { id: claude-code, key_env: CLAUDE_KEY, edge: true }
 accounts:
+  claude-plan: { kind: edge_only, cost_class: prepaid, trust: first_party }
   paid:
     base_url_env: UPSTREAM_URL
     api_key_env: OPENAI_KEY
@@ -60,6 +63,9 @@ tiers:
     targets: [{ account: gemini, model: gem-model }]
   opus:
     targets: [{ account: claude, model: claude-opus-5-5 }]
+edge:
+  plan_account: claude-plan
+  plan_models: { solo: claude-opus-5-5 }
 timeouts: { keepalive_after_s: 30, keepalive_interval_s: 15 }
 `;
 
@@ -389,6 +395,24 @@ describe.each(BACKENDS)("with %s as the shared state", (backend) => {
       await vi.waitFor(async () => expect((await ask(a, "both", "Hi", key)).status).toBe(401));
     });
 
+    it("shows what a Claude Code helper reported to any instance", async () => {
+      await startPair();
+      const reported = await fetch(`${a.url}/router/edge/report`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${CLAUDE_KEY}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          edgeVersion: "1.0.0",
+          limits: [{ scope: "*", claim: "five_hour" }],
+          usage: { five_hour: 1 },
+        }),
+      });
+      expect(reported.status).toBe(200);
+      await settle();
+      const status = await statusOf(b);
+      expect(status.edges).toMatchObject([{ client: "claude-code", edgeVersion: "1.0.0" }]);
+      expect(await accountState(b, "claude-plan")).toBe("exhausted");
+    });
+
     it("reloads the config on every instance", async () => {
       const dir = mkdtempSync(join(tmpdir(), "llmr-cluster-"));
       try {
@@ -478,6 +502,72 @@ describe.each(BACKENDS)("with %s as the shared state", (backend) => {
       }[];
       expect(sent[1]!.tool_calls![0]!.extra_content).toEqual(signature);
     });
+  });
+});
+
+describe("when messages between instances are lost", () => {
+  beforeEach(async () => {
+    kind = "memory";
+    await startPair();
+    shared.dropMessages = true;
+  });
+
+  const catchUp = () => b.runtime.cluster.resync();
+
+  it("still learns of a paused account", async () => {
+    upstream.script("main-model", OUT_OF_QUOTA);
+    await ask(a, "both").then((response) => response.text());
+    await settle();
+    expect(await accountState(b, "spare")).toBe("ok");
+
+    await catchUp();
+    expect(await accountState(b, "spare")).toBe("backoff");
+  });
+
+  it("does not bring back a state that was cleared", async () => {
+    shared.dropMessages = false;
+    upstream.script("main-model", OUT_OF_QUOTA);
+    await ask(a, "both").then((response) => response.text());
+    await settle();
+    shared.dropMessages = true;
+
+    a.runtime.quota.reset("spare");
+    await settle();
+    expect(await accountState(b, "spare")).toBe("backoff");
+
+    await catchUp();
+    await a.runtime.cluster.resync();
+    expect(await accountState(b, "spare")).toBe("ok");
+    expect(await accountState(a, "spare")).toBe("ok");
+  });
+
+  it("still learns of new client keys", async () => {
+    const created = await admin(a, "/router/clients", {
+      method: "POST",
+      body: JSON.stringify({ id: "tablet" }),
+    });
+    const { key } = await readJson(created);
+    await settle();
+    expect((await ask(b, "both", "Hi", key)).status).toBe(401);
+
+    await catchUp();
+    await vi.waitFor(async () => expect((await ask(b, "both", "Hi", key)).status).toBe(200));
+  });
+
+  it("still learns that a fallback has ended", async () => {
+    shared.dropMessages = false;
+    upstream.script("solo-model", OUT_OF_QUOTA);
+    await ask(a, "solo").then((response) => response.text());
+    await settle();
+    shared.dropMessages = true;
+    expect((await statusOf(b)).fallbacks).toHaveLength(1);
+
+    a.runtime.quota.reset("spare");
+    await ask(a, "solo", "Now").then((response) => response.text());
+    await settle();
+    clock += 60_000;
+    await catchUp();
+    expect((await statusOf(b)).fallbacks).toEqual([]);
   });
 });
 
