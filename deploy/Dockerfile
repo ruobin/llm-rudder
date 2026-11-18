@@ -1,5 +1,5 @@
 FROM node:26-slim AS build
-RUN npm install --global pnpm@11.12.0
+RUN npm install --global pnpm@11.28.11
 WORKDIR /repo
 
 # Install dependencies first, so source changes do not repeat this step.

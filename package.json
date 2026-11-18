@@ -4,7 +4,7 @@
   "private": true,
   "description": "Personal LLM gateway with tiered routing, failover and fallback warnings",
   "type": "module",
-  "packageManager": "pnpm@11.12.0",
+  "packageManager": "pnpm@11.28.11",
   "engines": {
     "node": ">=22.19"
   },
