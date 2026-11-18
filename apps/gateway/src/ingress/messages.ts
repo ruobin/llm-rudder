@@ -147,7 +147,7 @@ export function registerMessagesRoutes(app: FastifyInstance, runtime: Runtime): 
 
     scope.post("/v1/messages", { onRequest: authenticate }, async (request, reply) => {
       const client = request.llmrClient as ClientConfig;
-      const release = runtime.limits.acquire(client);
+      const release = await runtime.limits.acquire(client);
       const controller = new AbortController();
       const onClose = () => {
         if (!reply.raw.writableFinished) controller.abort();
@@ -166,7 +166,7 @@ export function registerMessagesRoutes(app: FastifyInstance, runtime: Runtime): 
     });
 
     scope.post("/v1/messages/count_tokens", { onRequest: authenticate }, async (request, reply) => {
-      const release = runtime.limits.acquire(request.llmrClient as ClientConfig);
+      const release = await runtime.limits.acquire(request.llmrClient as ClientConfig);
       try {
         const { status, text, headers } = await countTokens(request, runtime);
         return await reply.code(status).headers(headers).type("application/json").send(text);

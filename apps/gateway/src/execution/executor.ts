@@ -1,6 +1,7 @@
 import { dayPeriod } from "../billing/budgets.js";
 import { costMicroUsd, estimateUsage, priceFor } from "../billing/pricing.js";
 import { ChatGptError } from "../chatgpt/session.js";
+import { loadSharedArtifacts } from "../cluster/replication.js";
 import type { AccountConfig } from "../config/load.js";
 import type { AttemptRecord } from "../ledger/records.js";
 import type { Plan, PlanStep } from "../routing/plan.js";
@@ -146,6 +147,7 @@ class RequestRun {
   private async tryTargets(): Promise<void> {
     const { ctx, rt, plan } = this;
     let held = false;
+    await loadSharedArtifacts(rt, ctx);
     for (let index = 0; index < plan.steps.length; index += 1) {
       const step = plan.steps[index] as PlanStep;
       if (ctx.signal.aborted) {
@@ -162,7 +164,7 @@ class RequestRun {
         this.reasons.push(`${target.accountId}:probing`);
         continue;
       }
-      const hold = rt.budgets.reserve(account.id, estimateCost(ctx, target, rt));
+      const hold = await rt.budgets.acquire(account.id, estimateCost(ctx, target, rt));
       if (!hold) {
         rt.quota.releaseProbe(target);
         this.reasons.push(`${target.accountId}:budget`);

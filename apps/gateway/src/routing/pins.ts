@@ -13,6 +13,21 @@ export interface PinPersistence {
   loadPins(since: number): Promise<PinEntry[]>;
 }
 
+/** A conversation's pin, as shared with the other instances. */
+export interface PinRecord {
+  field: string;
+  /** Null when the pin was released. */
+  targetId: string | null;
+  at: number;
+}
+
+export interface PinReplication {
+  /** Asks the shared state which target holds a conversation after this move. */
+  move(field: string, seenAtStart: string | null, targetId: string, at: number): void;
+  release(field: string): void;
+  prune(cutoff: number): void;
+}
+
 /** About as long as a provider keeps a conversation's prompt cache. */
 export const PIN_IDLE_MS = 10 * 60_000;
 const SAVE_INTERVAL_MS = 60_000;
@@ -29,6 +44,7 @@ interface Pin {
  */
 export class PinStore {
   private readonly pins = new Map<string, Pin>();
+  private replication: PinReplication | null = null;
 
   constructor(
     private readonly now: () => number = Date.now,
@@ -37,6 +53,18 @@ export class PinStore {
 
   private key = (clientId: string, sessionHash: string, tier: string) =>
     `${clientId}\u0000${sessionHash}\u0000${tier}`;
+
+  replicateTo(replication: PinReplication): void {
+    this.replication = replication;
+  }
+
+  /** Applies a pin from the shared state. `final` marks the result of settling a move. */
+  applyRecord({ field, targetId, at }: PinRecord, final = false): void {
+    const current = this.pins.get(field);
+    if (!final && current && current.touchedAt > at) return;
+    if (targetId === null) this.pins.delete(field);
+    else this.pins.set(field, { targetId, touchedAt: at, savedAt: at });
+  }
 
   load(entries: PinEntry[]): void {
     for (const entry of entries) {
@@ -87,12 +115,15 @@ export class PinStore {
     });
     if (save) {
       this.persistence?.savePin({ clientId, sessionHash, tier, targetId, updatedAt: now });
+      this.replication?.move(key, seenAtStart, targetId, now);
     }
   }
 
   release(clientId: string, sessionHash: string, tier: string): void {
-    if (this.pins.delete(this.key(clientId, sessionHash, tier))) {
+    const key = this.key(clientId, sessionHash, tier);
+    if (this.pins.delete(key)) {
       this.persistence?.deletePin(clientId, sessionHash, tier);
+      this.replication?.release(key);
     }
   }
 
@@ -103,6 +134,7 @@ export class PinStore {
       if (pin.touchedAt < cutoff) this.pins.delete(key);
     }
     this.persistence?.deletePinsBefore(cutoff);
+    this.replication?.prune(cutoff);
   }
 
   get size(): number {

@@ -92,6 +92,7 @@ export function buildStatus(runtime: Runtime) {
     draining,
     pricingVersion: config.pricing.version,
     pinnedConversations: runtime.pins.size,
+    cluster: runtime.cluster.status(),
     chatgpt: [...runtime.chatgpt].map(([account, session]) => ({
       account,
       ...session.status(),
@@ -211,7 +212,9 @@ export function registerAdminRoutes(app: FastifyInstance, runtime: Runtime): voi
 
   app.post("/router/config/reload", { onRequest }, async (_request, reply) => {
     try {
-      return { reloaded: true, ...reloadConfig(runtime) };
+      const result = reloadConfig(runtime);
+      runtime.cluster.publish("config.reload", {});
+      return { reloaded: true, ...result };
     } catch (error) {
       if (!(error instanceof ConfigError)) throw error;
       return reply.code(422).send({ reloaded: false, problems: error.problems });
@@ -294,6 +297,7 @@ export function registerAdminRoutes(app: FastifyInstance, runtime: Runtime): voi
         ...(input.allowAccounts ? { allowAccounts: input.allowAccounts } : {}),
         ...(input.allowFallback === undefined ? {} : { allowFallback: input.allowFallback }),
       });
+      runtime.cluster.publish("clients.changed", {});
       const client = runtime.clients.list().find((item) => item.id === input.id);
       return await reply.code(201).header("cache-control", "no-store").send({ client, key });
     } catch (error) {
@@ -315,6 +319,7 @@ export function registerAdminRoutes(app: FastifyInstance, runtime: Runtime): voi
         "invalid_request_error",
       );
     }
+    runtime.cluster.publish("clients.changed", {});
     return { id: request.params.id, revoked: true };
   });
 }

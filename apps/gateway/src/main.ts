@@ -4,6 +4,7 @@ import { ConfigError, loadConfig } from "./config/load.js";
 import { MysqlPersistence } from "./db/mysql.js";
 import { MemoryPersistence, type Persistence } from "./ledger/records.js";
 import { runLedgerMaintenance } from "./ledger/usage.js";
+import { RedisBackend } from "./cluster/redis-backend.js";
 import { createLogger, createRuntime, reloadConfig, restoreState } from "./runtime.js";
 
 const DEFAULT_DRAIN_S = 280;
@@ -39,7 +40,13 @@ async function main(): Promise<void> {
     persistence = new MemoryPersistence();
   }
 
-  const runtime = createRuntime(loaded.config, { log, persistence, configPath });
+  const redisUrl = process.env.REDIS_URL;
+  const runtime = createRuntime(loaded.config, {
+    log,
+    persistence,
+    configPath,
+    sharedBackend: redisUrl ? new RedisBackend(redisUrl) : null,
+  });
   await restoreState(runtime);
   const app = buildApp(runtime);
   await app.listen({ host: loaded.config.server.host, port: loaded.config.server.port });
@@ -75,6 +82,7 @@ async function main(): Promise<void> {
     try {
       await app.close();
       await runtime.notifier.flush();
+      await runtime.cluster.stop();
       await runtime.upstream.close();
       await persistence.close();
     } catch (error) {

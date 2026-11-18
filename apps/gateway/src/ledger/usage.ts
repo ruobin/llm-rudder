@@ -112,10 +112,17 @@ export function buildUsageReport(rows: UsageRow[], from: string, to: string) {
   };
 }
 
+const MAINTENANCE_CLAIM_MS = 30 * 60_000;
+
 /** Saves daily totals, then removes detail older than the retention settings. */
 export async function runLedgerMaintenance(runtime: Runtime): Promise<void> {
-  const { persistence, config, log } = runtime;
+  const { persistence, config, log, cluster } = runtime;
   const now = runtime.now();
+  // One instance is enough. Without the shared state each does it, which is harmless.
+  const claimed = await cluster.attempt((backend) =>
+    backend.claim("ledger-maintenance", MAINTENANCE_CLAIM_MS),
+  );
+  if (claimed.ok && !claimed.value) return;
   try {
     await persistence.flush();
     await persistence.rollUp(now);

@@ -143,7 +143,7 @@ export function registerResponsesRoutes(app: FastifyInstance, runtime: Runtime):
 
     scope.post("/v1/responses", { onRequest: authenticate }, async (request, reply) => {
       const client = request.llmrClient as ClientConfig;
-      const release = runtime.limits.acquire(client);
+      const release = await runtime.limits.acquire(client);
       const controller = new AbortController();
       const onClose = () => {
         if (!reply.raw.writableFinished) controller.abort();

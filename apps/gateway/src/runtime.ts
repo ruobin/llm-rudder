@@ -1,10 +1,13 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { chatGptEndpoints, CHATGPT_USAGE_URL, type ChatGptEndpoints } from "@llm-rudder/shared";
 import { pino, type Logger } from "pino";
 import { ClientRegistry } from "./auth/clients.js";
 import { ClientLimits, FailedAuthThrottle } from "./auth/limits.js";
 import { BudgetManager, dayPeriod, monthPeriod } from "./billing/budgets.js";
 import { ChatGptSession, credentialPath, SIGN_IN_COMMAND } from "./chatgpt/session.js";
+import type { SharedBackend } from "./cluster/backend.js";
+import { Cluster } from "./cluster/cluster.js";
+import { replicateRuntimeState } from "./cluster/replication.js";
 import {
   ConfigError,
   loadConfig,
@@ -39,6 +42,10 @@ export interface Runtime {
   log: Logger;
   now: () => number;
   instanceId: string;
+  /** Marks requests sent upstream, so that this gateway can recognize a loop. */
+  hopId: string;
+  /** The other instances sharing this gateway's work, if there are any. */
+  cluster: Cluster;
   startedAt: number;
   quota: QuotaManager;
   health: TargetHealth;
@@ -81,6 +88,8 @@ export interface RuntimeOptions {
   configPath?: string;
   /** Where sign-ins are kept. */
   stateDir?: string;
+  /** Shared state, for running several instances together. */
+  sharedBackend?: SharedBackend | null;
   chatGptEndpoints?: ChatGptEndpoints;
 }
 
@@ -114,6 +123,13 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
   const log = options.log ?? createLogger();
   const persistence = options.persistence ?? new MemoryPersistence();
   const instanceId = randomUUID();
+  const cluster = new Cluster(options.sharedBackend ?? null, instanceId, now, log);
+  // The same for every instance of this gateway, and for no other gateway.
+  const hopId = createHash("sha256")
+    .update("llm-rudder hop")
+    .update(config.adminKeyHash)
+    .digest("hex")
+    .slice(0, 32);
 
   const sinks: EventSink[] = options.sinks ?? [
     ...(config.notifications.ntfyUrl ? [ntfySink(config.notifications.ntfyUrl)] : []),
@@ -194,17 +210,19 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
     log,
     now,
     instanceId,
+    hopId,
+    cluster,
     startedAt: now(),
     quota,
     health: new TargetHealth(now),
-    budgets: new BudgetManager(config.accounts, now, persistence),
+    budgets: new BudgetManager(config.accounts, now, persistence, cluster),
     notifier,
     episodes: new FallbackEpisodes(notifier, now),
     toolExtras: new ToolExtrasStore(now),
     reasoning: new ReasoningStore(now),
     pins: new PinStore(now, persistence),
     chatgpt,
-    upstream: options.upstream ?? new HttpUpstreamClient(config, instanceId),
+    upstream: options.upstream ?? new HttpUpstreamClient(config, hopId),
     persistence,
     clients: new ClientRegistry(config.clients, persistence, now),
     metrics: new Metrics(),
@@ -219,12 +237,13 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
       (target, failure) => quota.recordFailure(target, failure),
       (account, error) => log.warn({ account, err: error }, "account check failed"),
     ),
-    limits: new ClientLimits(now),
+    limits: new ClientLimits(now, cluster),
     authThrottle: new FailedAuthThrottle(now),
     meteredSeen: new Set(),
     edgeReports: new Map(),
     draining: false,
   };
+  replicateRuntimeState(runtime);
   return runtime;
 }
 
@@ -284,4 +303,5 @@ export async function restoreState(runtime: Runtime): Promise<void> {
   }
   runtime.budgets.load(spend);
   runtime.pins.load(pins);
+  await runtime.cluster.start();
 }

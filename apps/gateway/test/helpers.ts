@@ -11,6 +11,7 @@ import { FakeChatGptAuth } from "../src/dev/fake-chatgpt.js";
 import { FakeUpstream } from "../src/dev/fake-upstream.js";
 import { MemoryPersistence, type Persistence } from "../src/ledger/records.js";
 import type { RouterEvent } from "../src/notify/notifier.js";
+import type { SharedBackend } from "../src/cluster/backend.js";
 import { createRuntime, restoreState, type Runtime } from "../src/runtime.js";
 
 export const CHAT_KEY = "llmr_chat_key_0123456789abcdefghijklmnop";
@@ -212,6 +213,9 @@ export interface GatewayOptions {
   upstream?: FakeUpstream;
   persistence?: Persistence;
   now?: () => number;
+  /** Shared state, for running several gateways together. */
+  sharedBackend?: SharedBackend;
+  configPath?: string;
   /** Connects ChatGPT plan accounts to a fake sign-in service. */
   chatgpt?: { authUrl: string; stateDir: string };
 }
@@ -245,6 +249,8 @@ export async function startGateway(options: GatewayOptions = {}): Promise<TestGa
     persistence,
     sinks: [async (event) => void events.push(event)],
     ...(options.now ? { now: options.now } : {}),
+    ...(options.sharedBackend ? { sharedBackend: options.sharedBackend } : {}),
+    ...(options.configPath ? { configPath: options.configPath } : {}),
     ...(options.chatgpt
       ? {
           stateDir: options.chatgpt.stateDir,
@@ -279,6 +285,7 @@ export async function startGateway(options: GatewayOptions = {}): Promise<TestGa
       }),
     close: async () => {
       await app.close();
+      await runtime.cluster.stop();
       await runtime.upstream.close();
       if (!options.upstream) await upstream.stop();
     },

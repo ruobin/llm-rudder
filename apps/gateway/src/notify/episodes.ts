@@ -8,6 +8,19 @@ interface Episode {
   noticed: Set<string>;
 }
 
+/** An episode, as shared with the other instances. */
+export interface EpisodeRecord {
+  requestedTier: string;
+  servedTier: string;
+  reason: string;
+  since: number;
+}
+
+export interface EpisodeReplication {
+  publish(tier: string, record: EpisodeRecord | null): void;
+  noticed(tier: string, key: string): void;
+}
+
 const MAX_NOTICED_SESSIONS = 5000;
 
 /**
@@ -16,17 +29,40 @@ const MAX_NOTICED_SESSIONS = 5000;
  */
 export class FallbackEpisodes {
   private readonly active = new Map<string, Episode>();
+  private replication: EpisodeReplication | null = null;
 
   constructor(
     private readonly notifier: Notifier,
     private readonly now: () => number = Date.now,
   ) {}
 
+  replicateTo(replication: EpisodeReplication): void {
+    this.replication = replication;
+  }
+
+  applyRecord(tier: string, record: EpisodeRecord | null): void {
+    if (!record) {
+      this.active.delete(tier);
+      return;
+    }
+    this.active.set(tier, { ...record, noticed: this.active.get(tier)?.noticed ?? new Set() });
+  }
+
+  applyNotice(tier: string, key: string): void {
+    this.active.get(tier)?.noticed.add(key);
+  }
+
+  private share({ requestedTier, servedTier, reason, since }: Episode): void {
+    this.replication?.publish(requestedTier, { requestedTier, servedTier, reason, since });
+  }
+
   onFallback(requestedTier: string, servedTier: string, reason: string): void {
     const existing = this.active.get(requestedTier);
     if (existing) {
+      const changed = existing.servedTier !== servedTier || existing.reason !== reason;
       existing.servedTier = servedTier;
       existing.reason = reason;
+      if (changed) this.share(existing);
       this.notifier.emit(
         "tier_fallback_continuing",
         requestedTier,
@@ -34,13 +70,15 @@ export class FallbackEpisodes {
       );
       return;
     }
-    this.active.set(requestedTier, {
+    const episode: Episode = {
       requestedTier,
       servedTier,
       reason,
       since: this.now(),
       noticed: new Set(),
-    });
+    };
+    this.active.set(requestedTier, episode);
+    this.share(episode);
     this.notifier.clear("tier_fallback_ended", requestedTier);
     this.notifier.suppress("tier_fallback_continuing", requestedTier);
     this.notifier.emit(
@@ -52,6 +90,7 @@ export class FallbackEpisodes {
 
   onPrimary(requestedTier: string): void {
     if (!this.active.delete(requestedTier)) return;
+    this.replication?.publish(requestedTier, null);
     this.notifier.clear("tier_fallback_started", requestedTier);
     this.notifier.emit(
       "tier_fallback_ended",
@@ -68,6 +107,7 @@ export class FallbackEpisodes {
     if (episode.noticed.has(key)) return false;
     if (episode.noticed.size >= MAX_NOTICED_SESSIONS) episode.noticed.clear();
     episode.noticed.add(key);
+    this.replication?.noticed(requestedTier, key);
     return true;
   }
 

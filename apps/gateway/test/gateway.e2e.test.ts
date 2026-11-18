@@ -134,7 +134,7 @@ describe("gateway", () => {
     it("refuses a request that looped back", async () => {
       const response = await gateway.post(
         { model: "frontier", messages: userMessage() },
-        { headers: { "x-llmr-hop": gateway.runtime.instanceId } },
+        { headers: { "x-llmr-hop": gateway.runtime.hopId } },
       );
       expect(response.status).toBe(508);
     });

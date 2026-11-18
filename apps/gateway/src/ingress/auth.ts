@@ -68,7 +68,7 @@ export function clientAuthHook(runtime: Runtime) {
 
 /** Refuses a request that this gateway itself sent, which would otherwise loop. */
 export function rejectLoop(request: FastifyRequest, runtime: Runtime): void {
-  if (request.headers["x-llmr-hop"] === runtime.instanceId) {
+  if (request.headers["x-llmr-hop"] === runtime.hopId) {
     throw new RouterError(508, "loop_detected", "This request looped back to the gateway.");
   }
 }

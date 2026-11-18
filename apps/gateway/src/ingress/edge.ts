@@ -108,11 +108,10 @@ export function registerEdgeRoutes(app: FastifyInstance, runtime: Runtime): void
           ...(limit.resetsAt === undefined ? {} : { retryAt: limit.resetsAt }),
         })),
       );
-      runtime.edgeReports.set((request.llmrClient as ClientConfig).id, {
-        at: runtime.now(),
-        edgeVersion: report.edgeVersion,
-        usage: report.usage,
-      });
+      const client = (request.llmrClient as ClientConfig).id;
+      const status = { at: runtime.now(), edgeVersion: report.edgeVersion, usage: report.usage };
+      runtime.edgeReports.set(client, status);
+      runtime.cluster.publish("edge.report", { client, report: status });
       return { status: "ok" };
     },
   );

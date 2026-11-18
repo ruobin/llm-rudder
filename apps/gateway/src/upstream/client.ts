@@ -51,7 +51,7 @@ export class HttpUpstreamClient implements UpstreamClient {
 
   constructor(
     private config: Config,
-    private readonly instanceId: string,
+    private readonly hopId: string,
   ) {
     this.agent = new Agent({
       connect: { timeout: config.timeouts.connectMs },
@@ -73,7 +73,7 @@ export class HttpUpstreamClient implements UpstreamClient {
       "content-type": "application/json",
       accept: options.stream ? "text/event-stream" : "application/json",
       "user-agent": "llm-rudder/0.1",
-      "x-llmr-hop": this.instanceId,
+      "x-llmr-hop": this.hopId,
     };
     if (account.apiKey) headers.authorization = `Bearer ${account.apiKey}`;
 
@@ -106,7 +106,7 @@ export class HttpUpstreamClient implements UpstreamClient {
     const credential = request.bearerToken ?? account.apiKey;
     if (credential) headers.authorization = `Bearer ${credential}`;
     // A signed-in account always talks to OpenAI itself, so no loop is possible.
-    if (!request.bearerToken) headers["x-llmr-hop"] = this.instanceId;
+    if (!request.bearerToken) headers["x-llmr-hop"] = this.hopId;
     const response = await request_(`${account.baseUrl}/responses`, {
       method: "POST",
       headers,
@@ -134,7 +134,7 @@ export class HttpUpstreamClient implements UpstreamClient {
       "content-type": "application/json",
       accept: request.stream ? "text/event-stream" : "application/json",
       "user-agent": "llm-rudder/0.1",
-      "x-llmr-hop": this.instanceId,
+      "x-llmr-hop": this.hopId,
     };
     if (account.apiKey) {
       if (account.authHeader === "bearer") headers.authorization = `Bearer ${account.apiKey}`;

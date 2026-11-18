@@ -144,7 +144,8 @@ export class Metrics {
   }
 
   render(runtime: Runtime): string {
-    const { config, quota, budgets, pins, limits, chatgpt, balances, now, startedAt } = runtime;
+    const { config, quota, budgets, pins, limits, chatgpt, balances, cluster, now, startedAt } =
+      runtime;
     const targets = [...config.tiers.values()].flatMap((tier) =>
       tier.targets.map((target): [Labels, number] => [
         { tier: tier.name, account: target.accountId, model: target.model },
@@ -179,6 +180,16 @@ export class Metrics {
         [...chatgpt].map(([id, session]) => [{ account: id }, session.usable ? 1 : 0]),
       ),
       ...gauge("llmr_active_requests", "Requests in progress.", [[{}, limits.activeRequests()]]),
+      ...(cluster.enabled
+        ? [
+            ...gauge("llmr_cluster_connected", "1 when the shared state is reachable.", [
+              [{}, cluster.connected ? 1 : 0],
+            ]),
+            ...gauge("llmr_cluster_instances", "Gateway instances sharing the work.", [
+              [{}, cluster.instanceCount],
+            ]),
+          ]
+        : []),
       ...gauge("llmr_pinned_conversations", "Conversations pinned to a target.", [[{}, pins.size]]),
       ...gauge("llmr_uptime_seconds", "Seconds since the gateway started.", [
         [{}, (now() - startedAt) / 1000],

@@ -27,6 +27,25 @@ export type QuotaChange =
   | { kind: "recovered"; accountId: string }
   | { kind: "disabled"; accountId: string; detail?: string };
 
+/** A change to one state, as shared with the other instances. */
+export interface QuotaRecord {
+  accountId: string;
+  scope: string;
+  /** Null when the state was cleared. */
+  state: QuotaState | null;
+  /** When it changed. The latest change to each state wins on every instance. */
+  at: number;
+  by: string;
+}
+
+export interface QuotaReplication {
+  instanceId: string;
+  publish(record: QuotaRecord): void;
+}
+
+export const isNewerRecord = (record: QuotaRecord, than: QuotaRecord) =>
+  record.at > than.at || (record.at === than.at && record.by > than.by);
+
 export type Availability =
   { available: true } | { available: false; reason: QuotaStatus; retryAt?: number };
 
@@ -45,6 +64,8 @@ const isLongLived = (status: QuotaStatus) =>
 
 export class QuotaManager {
   private readonly states = new Map<string, QuotaEntry>();
+  private readonly latest = new Map<string, QuotaRecord>();
+  private replication: QuotaReplication | null = null;
 
   constructor(
     private readonly now: () => number = Date.now,
@@ -54,6 +75,47 @@ export class QuotaManager {
 
   load(entries: QuotaEntry[]): void {
     for (const entry of entries) this.states.set(keyOf(entry.accountId, entry.scope), entry);
+  }
+
+  replicateTo(replication: QuotaReplication): void {
+    this.replication = replication;
+  }
+
+  private share(accountId: string, scope: string, state: QuotaState | null): void {
+    if (!this.replication) return;
+    const key = keyOf(accountId, scope);
+    const record: QuotaRecord = {
+      accountId,
+      scope,
+      state: state ? { ...state } : null,
+      // Always after what this instance has seen, even if another's clock runs ahead.
+      at: Math.max(this.now(), (this.latest.get(key)?.at ?? 0) + 1),
+      by: this.replication.instanceId,
+    };
+    this.latest.set(key, record);
+    this.replication.publish(record);
+  }
+
+  /** Applies a change made by another instance, unless a later one is already known. */
+  applyRecord(record: QuotaRecord): void {
+    const { accountId, scope, state } = record;
+    const key = keyOf(accountId, scope);
+    const known = this.latest.get(key);
+    if (known && !isNewerRecord(record, known)) return;
+    this.latest.set(key, record);
+    if (state) this.states.set(key, { accountId, scope, state: { ...state } });
+    else this.states.delete(key);
+  }
+
+  /** Every state this instance knows of, including ones it has seen cleared. */
+  records(): QuotaRecord[] {
+    const records = new Map(this.latest);
+    for (const [key, { accountId, scope, state }] of this.states) {
+      if (!records.has(key)) {
+        records.set(key, { accountId, scope, state: { ...state }, at: 0, by: "" });
+      }
+    }
+    return [...records.values()];
   }
 
   private scopes(target: Target): string[] {
@@ -68,11 +130,13 @@ export class QuotaManager {
     const entry = { accountId, scope, state };
     this.states.set(keyOf(accountId, scope), entry);
     if (isLongLived(state.status)) this.persistence?.saveQuota(entry);
+    this.share(accountId, scope, state);
   }
 
   private remove(accountId: string, scope: string): void {
     if (this.states.delete(keyOf(accountId, scope))) {
       this.persistence?.deleteQuota(accountId, scope);
+      this.share(accountId, scope, null);
     }
   }
 
@@ -112,13 +176,16 @@ export class QuotaManager {
     for (const scope of this.scopes(target)) {
       const state = this.read(target.accountId, scope);
       if (state?.status === "exhausted" || state?.status === "backoff") {
+        const probing: QuotaState = { ...state, status: "probing", probeStartedAt: now };
         this.states.set(keyOf(target.accountId, scope), {
           accountId: target.accountId,
           scope,
-          state: { ...state, status: "probing", probeStartedAt: now },
+          state: probing,
         });
+        this.share(target.accountId, scope, probing);
       } else if (state?.status === "probing") {
         state.probeStartedAt = now;
+        this.share(target.accountId, scope, state);
       }
     }
     return true;
@@ -143,6 +210,7 @@ export class QuotaManager {
       if (state?.status === "probing") {
         state.status = state.backoffS ? "backoff" : "exhausted";
         delete state.probeStartedAt;
+        this.share(target.accountId, scope, state);
       }
     }
   }

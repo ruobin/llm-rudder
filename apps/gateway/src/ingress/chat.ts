@@ -60,7 +60,7 @@ export function registerChatRoutes(app: FastifyInstance, runtime: Runtime): void
 
   app.post("/v1/chat/completions", { onRequest: authenticate }, async (request, reply) => {
     const client = request.llmrClient as ClientConfig;
-    const release = runtime.limits.acquire(client);
+    const release = await runtime.limits.acquire(client);
 
     const controller = new AbortController();
     const onClose = () => {

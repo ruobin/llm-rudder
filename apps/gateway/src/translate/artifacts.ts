@@ -3,10 +3,13 @@ import type { ReasoningFamily } from "./ir.js";
 const TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
 
-interface Entry {
+export interface ReasoningEntry {
   family: ReasoningFamily;
   accountId: string;
   items: unknown[];
+}
+
+interface Entry extends ReasoningEntry {
   bytes: number;
   expiresAt: number;
 }
@@ -19,6 +22,8 @@ interface Entry {
 export class ReasoningStore {
   private readonly entries = new Map<string, Entry>();
   private totalBytes = 0;
+  /** Called for each new entry, so other instances can find it. */
+  onStored: ((clientId: string, callId: string, entry: ReasoningEntry) => void) | null = null;
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -27,7 +32,18 @@ export class ReasoningStore {
     this.totalBytes -= entry.bytes;
   }
 
-  set(clientId: string, callId: string, value: Omit<Entry, "bytes" | "expiresAt">): void {
+  set(clientId: string, callId: string, value: ReasoningEntry): void {
+    this.restore(clientId, callId, value);
+    this.onStored?.(clientId, callId, value);
+  }
+
+  has(clientId: string, callId: string): boolean {
+    const entry = this.entries.get(`${clientId}\u0000${callId}`);
+    return entry !== undefined && entry.expiresAt > this.now();
+  }
+
+  /** Stores an entry that another instance already shared. */
+  restore(clientId: string, callId: string, value: ReasoningEntry): void {
     const key = `${clientId}\u0000${callId}`;
     const existing = this.entries.get(key);
     if (existing) this.remove(key, existing);

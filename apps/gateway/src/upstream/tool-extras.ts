@@ -10,10 +10,18 @@ const MAX_ENTRIES = 20_000;
  */
 export class ToolExtrasStore {
   private readonly entries = new Map<string, { value: unknown; expiresAt: number }>();
+  /** Called for each new entry, so other instances can find it. */
+  onStored: ((clientId: string, toolCallId: string, value: unknown) => void) | null = null;
 
   constructor(private readonly now: () => number = Date.now) {}
 
   set(clientId: string, toolCallId: string, value: unknown): void {
+    this.restore(clientId, toolCallId, value);
+    this.onStored?.(clientId, toolCallId, value);
+  }
+
+  /** Stores an entry that another instance already shared. */
+  restore(clientId: string, toolCallId: string, value: unknown): void {
     const key = `${clientId}\u0000${toolCallId}`;
     this.entries.delete(key);
     this.entries.set(key, { value, expiresAt: this.now() + TTL_MS });
@@ -21,6 +29,10 @@ export class ToolExtrasStore {
       const oldest = this.entries.keys().next().value;
       if (oldest !== undefined) this.entries.delete(oldest);
     }
+  }
+
+  has(clientId: string, toolCallId: string): boolean {
+    return this.get(clientId, toolCallId) !== undefined;
   }
 
   get(clientId: string, toolCallId: string): unknown {

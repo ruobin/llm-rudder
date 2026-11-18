@@ -22,8 +22,17 @@ export interface EventPersistence {
 
 export type EventSink = (event: RouterEvent) => Promise<void>;
 
+/** Keeps several instances from sending the same notification. */
+export interface NotifierCoordinator {
+  claim(key: string, ttlMs: number): Promise<boolean>;
+  shareEvent(event: RouterEvent): void;
+  shareCleared(key: string): void;
+  shareSuppressed(key: string, at: number, ttlMs: number): void;
+}
+
 const RECENT_LIMIT = 100;
 const SINK_TIMEOUT_MS = 5000;
+const MIN_CLAIM_MS = 1000;
 const URGENT_KINDS = new Set<EventKind>([
   "tier_fallback_started",
   "account_disabled",
@@ -81,11 +90,14 @@ export function telegramSink(botToken: string, chatId: string, apiUrl = TELEGRAM
   };
 }
 
+const eventKey = (kind: EventKind, subject: string) => `${kind}\u0000${subject}`;
+
 /** Records events and pushes them, sending each repeating event at most once per window. */
 export class Notifier {
   private readonly lastSent = new Map<string, number>();
   private readonly recentEvents: RouterEvent[] = [];
   private readonly pending = new Set<Promise<void>>();
+  private coordinator: NotifierCoordinator | null = null;
 
   constructor(
     private readonly sinks: EventSink[],
@@ -95,35 +107,84 @@ export class Notifier {
     private readonly onSinkError?: (error: unknown) => void,
   ) {}
 
-  emit(kind: EventKind, subject: string, message: string): boolean {
-    const now = this.now();
-    const key = `${kind}\u0000${subject}`;
-    const last = this.lastSent.get(key);
-    if (last !== undefined && now - last < this.repeatAfterMs) return false;
-    this.lastSent.set(key, now);
+  coordinateWith(coordinator: NotifierCoordinator): void {
+    this.coordinator = coordinator;
+  }
 
-    const event: RouterEvent = { at: now, kind, subject, message };
+  private get claimMs(): number {
+    return Math.max(this.repeatAfterMs, MIN_CLAIM_MS);
+  }
+
+  private remember(event: RouterEvent): void {
     this.recentEvents.push(event);
     if (this.recentEvents.length > RECENT_LIMIT) this.recentEvents.shift();
-    this.persistence?.saveEvent(event);
+  }
 
+  private deliver(event: RouterEvent): void {
+    this.remember(event);
+    this.persistence?.saveEvent(event);
     for (const sink of this.sinks) {
       const delivery = sink(event)
         .catch((error: unknown) => this.onSinkError?.(error))
         .finally(() => this.pending.delete(delivery));
       this.pending.add(delivery);
     }
+  }
+
+  emit(kind: EventKind, subject: string, message: string): boolean {
+    const now = this.now();
+    const key = eventKey(kind, subject);
+    const last = this.lastSent.get(key);
+    if (last !== undefined && now - last < this.repeatAfterMs) return false;
+    this.lastSent.set(key, now);
+
+    const event: RouterEvent = { at: now, kind, subject, message };
+    const { coordinator } = this;
+    if (!coordinator) {
+      this.deliver(event);
+      return true;
+    }
+    // Whichever instance claims the event first is the one that sends it.
+    const claim = coordinator
+      .claim(key, this.claimMs)
+      .then((claimed) => {
+        if (!claimed) return;
+        coordinator.shareEvent(event);
+        this.deliver(event);
+      })
+      .catch((error: unknown) => this.onSinkError?.(error))
+      .finally(() => this.pending.delete(claim));
+    this.pending.add(claim);
     return true;
   }
 
   /** Allows the next event of this kind and subject to be sent right away. */
   clear(kind: EventKind, subject: string): void {
-    this.lastSent.delete(`${kind}\u0000${subject}`);
+    const key = eventKey(kind, subject);
+    this.lastSent.delete(key);
+    this.coordinator?.shareCleared(key);
   }
 
   /** Treats this event as just sent, so it waits a full window. */
   suppress(kind: EventKind, subject: string): void {
-    this.lastSent.set(`${kind}\u0000${subject}`, this.now());
+    const key = eventKey(kind, subject);
+    const now = this.now();
+    this.lastSent.set(key, now);
+    this.coordinator?.shareSuppressed(key, now, this.claimMs);
+  }
+
+  /** Records an event that another instance sent. */
+  applyEvent(event: RouterEvent): void {
+    this.lastSent.set(eventKey(event.kind, event.subject), event.at);
+    this.remember(event);
+  }
+
+  applyCleared(key: string): void {
+    this.lastSent.delete(key);
+  }
+
+  applySuppressed(key: string, at: number): void {
+    this.lastSent.set(key, at);
   }
 
   recent(): RouterEvent[] {
