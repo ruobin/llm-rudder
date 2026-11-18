@@ -18,7 +18,7 @@ clients:
   - { id: pi, key_env: LLMR_KEY_PI, notice: text }
   - { id: chat-ui, key_env: LLMR_KEY_CHAT_UI, notice: text }
   - { id: scripts, key_env: LLMR_KEY_SCRIPTS, notice: none, rpm: 120 }
-  # Used by llmr-edge. See "Claude Code" in the README.
+  # Used by llmr-edge. See "Use it with Claude Code" in docs/USER_GUIDE.md.
   - { id: claude-code, key_env: LLMR_KEY_CLAUDE_CODE, notice: none, edge: true }
   - { id: codex, key_env: LLMR_KEY_CODEX, notice: text }
 
@@ -72,7 +72,7 @@ accounts:
 
   # Your ChatGPT plan, through OpenAI's Sign in with ChatGPT. OpenAI offers this route
   # to open-source apps, so use it from a public copy of this project.
-  # It is for your own use. See "Use your ChatGPT plan" in the README.
+  # It is for your own use. See "Use your ChatGPT plan" in docs/USER_GUIDE.md.
   chatgpt-plan:
     kind: chatgpt_plan
     cost_class: prepaid

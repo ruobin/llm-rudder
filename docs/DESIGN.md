@@ -637,7 +637,7 @@ models_file: models.yaml # what each model accepts
 - `fallback_tiers` cannot include the tier itself.
 - A value that looks like a secret (`sk-…`, `llmr_…`) is rejected inside the YAML.
 - An `edge_only` account cannot be a tier target.
-- `params` apply only to `openai.chat` accounts. Use `effort` on the others.
+- `params` apply only to `openai.chat` accounts. Use `effort` on the others. A target's `effort` applies whenever the client sets none, including requests that pass through untranslated.
 - A warning is printed when a metered account has no budget, or a tier has only one target.
 
 ### 8.4 Core types
@@ -872,7 +872,7 @@ stateDiagram-v2
 ```
 
 - **Probing.** After a reset, the next real request is the probe. No synthetic requests are sent. Only one probe runs at a time; others keep using the fallback.
-- **Persistence.** Long-lived states (`exhausted`, `backoff`, `disabled`) are written to MySQL, so a restart does not hammer an exhausted account. Short cooldowns stay in memory.
+- **Persistence.** Long-lived states (`exhausted`, `backoff`, `disabled`) are written to MySQL, so a restart does not hammer an exhausted account. The exception is a stopped key-based account: a restart is how a replaced key takes effect, so it gets another try. Short cooldowns stay in memory.
 - **Account pauses.** A temporary failure that covers a whole account pauses it for 15 seconds, doubling up to 5 minutes. It does not shorten a usage-limit backoff that is being rechecked.
 - **Failures of one request** change no state, so one unsupported input cannot block other requests.
 - **Circuit breaker.** When at least five recent attempts exist and half of them failed for health reasons, the target rests for 30 seconds, doubling up to 5 minutes. One request then tests it.
@@ -1317,7 +1317,7 @@ The VPS holds real API keys and is reachable from the internet, so security is p
 | Threat                          | Control                                                                                                                                                                                                                                          |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Stranger calls the gateway      | Every `/v1/*` route needs a client key of at least 32 random characters, checked before the body is read. Keys are compared as SHA-256 digests in constant time.                                                                                 |
-| Key guessing                    | Failed authentication is throttled per IP.                                                                                                                                                                                                       |
+| Key guessing                    | Failed authentication is throttled per IP. A valid key still works, so one misconfigured app cannot lock out the others.                                                                                                                         |
 | A leaked client key burns money | Per-client `rpm` and concurrency limits, per-account budgets, one key per client so one can be revoked alone.                                                                                                                                    |
 | Traffic interception            | TLS at Caddy or Nginx. The gateway port is not published to the internet.                                                                                                                                                                        |
 | Secrets in logs                 | Pino redacts `authorization`, `x-api-key` and related headers. Prompts and completions are never logged. Stored session identifiers are hashes.                                                                                                  |

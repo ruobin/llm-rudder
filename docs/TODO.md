@@ -11,7 +11,7 @@ This is the working checklist. [`DESIGN.md`](DESIGN.md) explains why. Each phase
 | [2](#phase-2--claude-code-lane)           | Claude Code lane                      | ~1 week    | Code done; real login pending  |
 | [3](#phase-3--translation-codex-and-pins) | Translation, Codex and pins           | 2–3 weeks  | Code done; real keys pending   |
 | [4](#phase-4--chatgpt-plan)               | ChatGPT plan                          | ~1 week    | Deployed; long-run checks left |
-| [5](#phase-5--dashboard-and-hardening)    | Dashboard and hardening               | 2–3 weeks  | Not started                    |
+| [5](#phase-5--dashboard-and-hardening)    | Dashboard and hardening               | 2–3 weeks  | Deployed; long-run checks left |
 | [6](#phase-6--scale)                      | Scale                                 | Open-ended | Not started                    |
 
 ---
@@ -28,7 +28,7 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 **API keys and gateways**
 
 - [ ] **(you)** Record a normal, a streaming and a tool-call response from OpenAI and Gemini, with secrets scrubbed.
-- [ ] **(you)** Record the same from your New API instance, plus its real out-of-quota and no-channel errors.
+- [~] Record the same from your New API instance, plus its real out-of-quota and no-channel errors. Normal, streaming, tool-call, no-channel and bad-key responses are in `apps/gateway/test/fixtures/new-api.json`. A real out-of-quota error is still missing.
 - [ ] Confirm where Gemini returns thought signatures in the OpenAI format (`tool_calls[].extra_content.google.thought_signature` is reported but not in Google's docs).
 - [ ] Confirm that Gemini's bypass value works at that path after a cross-provider failover.
 
@@ -230,11 +230,25 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 - [x] Hot config reload for new requests
 - [x] Circuit breakers and health-based tie-breaking
 - [x] Encrypted ChatGPT sign-in and backups. Provider keys stay in `.env`.
-- [~] Image publishing to GHCR, and a deploy workflow. They run for the first time after this phase reaches `main`.
+- [x] Image publishing to GHCR, for amd64 and arm64
+- [~] Deploy workflow. It is written but has not run against a real server.
 - [~] Automated off-site backups, with a restore test. The scripts are tested. **(you)** Choose where copies go and schedule them.
 - [x] Ledger retention job and daily rollups
 - [x] Load test: added latency, memory per stream, streams per instance
 - [x] Failure-injection tests
+
+**Gateways behind the gateway**
+
+- [x] Errors passed on by a gateway pause one model, and stop the account only if the gateway confirms them
+- [x] `check-accounts`, which checks keys and models and can send short real requests
+- [x] Real New API account in production: text and tool calls through all three client formats
+- [x] Failover rehearsal against a stand-in plan, with New API behind it
+- [ ] **(you)** A real plan limit moves traffic to New API, and back after the reset
+
+**Documentation**
+
+- [x] User guide, and a README with dashboard screenshots
+- [x] `pnpm docs:screenshots`, which retakes them from demo data
 
 **Exit criteria**
 

@@ -1,129 +1,207 @@
 # llm-rudder
 
-A personal LLM gateway. Clients ask for `frontier`, `medium` or `flash`. The gateway picks a real model from your API keys and OpenAI-compatible gateways, moves to the next one when a target fails or runs out of quota, and drops to another tier with a warning instead of failing the task.
+**One endpoint for all your AI plans, API keys and gateways. When one runs out, your work keeps going.**
 
-**Status: Phases 1 to 5 are built.** The gateway serves the OpenAI Chat Completions and Responses APIs and Anthropic's Messages API, and translates between them, so any client can use any model. The real OpenCode, Pi, Claude Code and Codex command-line clients have been tested through it with fake providers, and chat UIs use the same Chat Completions API. A small local helper keeps Claude Code on your Claude plan and moves it to the gateway when the plan runs out, and your ChatGPT plan can serve every client. A real ChatGPT plan has served text and tool requests through the gateway. A deployed VPS has received that sign-in, answered a request and renewed its token. A web dashboard, metrics, alerts and encrypted backups are included. Other real providers, and OpenCode, Pi, Codex and chat UIs on the real plan, are still untested. See [the design](docs/DESIGN.md) and [the to-do list](docs/TODO.md).
+Point your coding agents, chat apps and scripts at llm-rudder and ask for `frontier`, `medium` or `flash`. It picks a real model from the accounts you already have, moves to the next one when a provider fails or runs out of quota, and drops to a lower tier with a visible warning instead of failing your task.
 
-## Try it locally
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.webp">
+  <img src="docs/images/overview.webp" alt="The llm-rudder dashboard during an incident: the frontier tier has run out of quota and is being served by medium">
+</picture>
 
-This needs Node.js 22.19 or later and pnpm. It uses fake providers, so it needs no API keys and no database.
+<sub>The dashboard during an incident, using made-up demo data: both frontier accounts ran out, so requests moved to `medium`.</sub>
 
-```bash
-pnpm install
-pnpm demo
+## What it does
+
+- **One name for each quality level.** Apps ask for a tier. You decide in one file which models serve it, and you can change them without touching any app.
+- **Automatic failover.** Errors, rate limits and used-up quotas move the request to the next model before any output reaches your app.
+- **A warning instead of a failure.** When a whole tier is out, requests use the next tier and the reply says so.
+- **Any app, any model.** It speaks the OpenAI Chat Completions, OpenAI Responses and Anthropic Messages APIs, and translates between them.
+- **Your plans and keys together.** Use API keys, an eligible ChatGPT plan, your Claude plan through a small local helper, and any compatible service such as New API, LiteLLM, sub2api or OpenRouter.
+- **A clear view of what happened.** The dashboard shows accounts, spending, usage and every routing decision. Budgets cap paid keys. Prompts and answers are never stored.
+
+```mermaid
+flowchart LR
+  subgraph apps["Your apps"]
+    direction TB
+    A["OpenCode, Pi, Codex"]
+    B["Open WebUI, LibreChat"]
+    C["Your scripts"]
+    D["Claude Code, through llmr-edge"]
+  end
+  R{"llm-rudder<br/>frontier, medium, flash"}
+  subgraph accounts["Your accounts, tried in order"]
+    direction TB
+    P["ChatGPT plan"]
+    K["OpenAI, Anthropic and Gemini keys"]
+    G["Any compatible gateway"]
+  end
+  apps --> R --> accounts
 ```
 
-The demo walks through normal routing, failover, tier fallback with a warning, and recovery.
+## See it in two minutes
 
-To see the web dashboard with a month of made-up traffic, run `pnpm demo:dashboard` and open the address it prints.
-
-## Run it on a VPS
-
-Follow [the deployment guide](docs/DEPLOYMENT.md). It covers installation, choosing accounts, public or private access, connecting clients, the dashboard, alerts, metrics, updates, backups and troubleshooting.
-
-Use a VPS in a region your providers support, such as the United States, Singapore or Taiwan. Hong Kong and mainland China are not supported by Anthropic, OpenAI or Google. See [the design](docs/DESIGN.md#35-where-the-vps-may-run).
-
-## Use it
+You need [Node.js](https://nodejs.org) 22.19 or later. The demos use fake providers, so they need no accounts, keys or database.
 
 ```bash
-curl https://llm.example.com/v1/chat/completions \
+git clone https://github.com/ruobin/llm-rudder.git
+cd llm-rudder
+npm install --global pnpm   # skip this if you already have pnpm
+pnpm install
+
+pnpm demo             # routing, failover, a tier drop and recovery, in your terminal
+pnpm demo:dashboard   # the web dashboard, with a month of made-up traffic
+```
+
+For the dashboard, open <http://127.0.0.1:4150> and sign in with the password `demo-password`.
+
+## A look at the dashboard
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<a href="docs/USER_GUIDE.md#accounts"><strong>Accounts</strong></a><br>
+Limits, budgets and balances for each key, plan and gateway.<br><br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/accounts-dark.webp">
+  <img src="docs/images/accounts.webp" alt="Accounts page of the dashboard">
+</picture>
+</td>
+<td width="50%" valign="top">
+<a href="docs/USER_GUIDE.md#usage"><strong>Usage</strong></a><br>
+Tokens, spending and value by day, app, account and model.<br><br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-dark.webp">
+  <img src="docs/images/usage.webp" alt="Usage page of the dashboard">
+</picture>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<a href="docs/USER_GUIDE.md#requests"><strong>Requests</strong></a><br>
+Every routing decision, with lower-tier answers marked.<br><br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/requests-dark.webp">
+  <img src="docs/images/requests.webp" alt="Requests page of the dashboard">
+</picture>
+</td>
+<td width="50%" valign="top">
+<a href="docs/USER_GUIDE.md#request-details"><strong>Request details</strong></a><br>
+Each target that was tried, and why it failed or answered.<br><br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/request-detail-dark.webp">
+  <img src="docs/images/request-detail.webp" alt="Request details page of the dashboard">
+</picture>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<a href="docs/USER_GUIDE.md#clients"><strong>Clients</strong></a><br>
+A separate key for each app, which you can revoke on its own.<br><br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/clients-dark.webp">
+  <img src="docs/images/clients.webp" alt="Clients page of the dashboard">
+</picture>
+</td>
+<td width="50%" valign="top">
+<a href="docs/USER_GUIDE.md#settings"><strong>Settings</strong></a><br>
+The tiers and routing rules your gateway is using.<br><br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/settings-dark.webp">
+  <img src="docs/images/settings.webp" alt="Settings page of the dashboard">
+</picture>
+</td>
+</tr>
+</table>
+
+## Set it up
+
+You need a Linux server with Docker, Git and OpenSSL, in a region your providers support, such as the United States, Singapore or Taiwan. Hong Kong and mainland China are not supported by Anthropic, OpenAI or Google.
+
+**1. Install it and create its secrets.**
+
+```bash
+git clone https://github.com/ruobin/llm-rudder.git /opt/llm-rudder
+cd /opt/llm-rudder
+
+cp .env.example .env
+chmod 600 .env
+sed -i "s/^MYSQL_PASSWORD=.*/MYSQL_PASSWORD=$(openssl rand -hex 24)/" .env
+sed -i "s/^MYSQL_ROOT_PASSWORD=.*/MYSQL_ROOT_PASSWORD=$(openssl rand -hex 24)/" .env
+cp config/config.example.yaml config/config.yaml
+
+docker compose build gateway
+
+sed -i '/^LLMR_ADMIN_KEY=$/d; /^LLMR_KEY_[A-Z_]*=$/d' .env
+docker compose run --rm -T --no-deps gateway node dist/cli.js keygen \
+  LLMR_ADMIN_KEY LLMR_KEY_OPENCODE LLMR_KEY_PI LLMR_KEY_CHAT_UI \
+  LLMR_KEY_SCRIPTS LLMR_KEY_CLAUDE_CODE LLMR_KEY_CODEX >> .env
+```
+
+**2. Add your accounts.** Put your provider keys in `.env`. In `config/config.yaml`, delete the accounts you do not use and their lines under `tiers`. The [user guide](docs/USER_GUIDE.md#set-up-your-accounts) has a recipe for each kind of account.
+
+**3. Start it and check every account.** The last command sends two short real requests to each model, so you find a wrong key or model name now and not during a task.
+
+```bash
+docker compose run --rm --no-deps gateway node dist/cli.js check-config
+docker compose up -d gateway
+docker compose exec gateway node dist/cli.js check-accounts --live
+```
+
+**4. Send your first request.**
+
+```bash
+set -a; . ./.env; set +a
+curl -i http://127.0.0.1:4141/v1/chat/completions \
   -H "Authorization: Bearer $LLMR_KEY_SCRIPTS" \
   -H "Content-Type: application/json" \
-  -d '{"model":"frontier","messages":[{"role":"user","content":"Hello"}]}' -i
+  -d '{"model":"medium","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-Response headers show what happened:
+The `x-llmr-target` response header shows which tier, account and model answered.
 
-| Header                                        | Meaning                                                        |
-| --------------------------------------------- | -------------------------------------------------------------- |
-| `x-llmr-target`                               | The tier, account and model that answered                      |
-| `x-llmr-requested-tier`, `x-llmr-served-tier` | What you asked for and what served it                          |
-| `x-llmr-fallback`                             | Targets that were skipped or failed, and why                   |
-| `x-llmr-tier-fallback`                        | Present when another tier answered, such as `frontier->medium` |
+**5. Make it reachable.** It listens only on the server itself. The [deployment guide](docs/DEPLOYMENT.md#4-let-your-clients-reach-it) shows how to publish it with Caddy, Nginx or Tailscale, and how to add the [dashboard](docs/DEPLOYMENT.md#10-add-the-dashboard), [alerts](docs/DEPLOYMENT.md#11-get-alerts) and [backups](docs/DEPLOYMENT.md#8-what-to-back-up).
 
-Setup for OpenCode, Pi, Open WebUI and LibreChat is in [Appendix A of the design](docs/DESIGN.md#appendix-a-client-setup).
+## Connect your apps
 
-To check accounts, budgets and active fallbacks, see [Operate it](docs/DEPLOYMENT.md#7-operate-it).
+Each app uses your gateway's address followed by `/v1`, its own key, and `frontier`, `medium` or `flash` as the model.
 
-## Use it with Claude Code
+| App                              | How to connect it                                                                    |
+| -------------------------------- | ------------------------------------------------------------------------------------ |
+| Any OpenAI-compatible app or SDK | [Set the base URL and key](docs/USER_GUIDE.md#any-openai-compatible-app)             |
+| OpenCode                         | [Provider settings](docs/DESIGN.md#opencode-phase-1)                                 |
+| Pi                               | [Model settings](docs/DESIGN.md#pi-phase-1)                                          |
+| Open WebUI                       | [Connection settings](docs/DESIGN.md#open-webui-phase-1)                             |
+| LibreChat                        | [Endpoint settings](docs/DESIGN.md#librechat-phase-1)                                |
+| Claude Code                      | [Keep your Claude plan, with a fallback](docs/USER_GUIDE.md#use-it-with-claude-code) |
+| Codex                            | [A profile for llm-rudder](docs/USER_GUIDE.md#use-it-with-codex)                     |
 
-Claude Code talks to `llmr-edge`, a small program on your own computer. The edge sends requests to Anthropic with your normal login. Only when your plan reports a limit does it send the request to your gateway, with the Claude login removed, so the login never reaches the VPS.
+## Documentation
 
-```bash
-pnpm install && pnpm --filter @llm-rudder/edge build
-node apps/edge/dist/llmr-edge.mjs install
-LLMR_ROUTER_KEY="$LLMR_KEY_CLAUDE_CODE" llmr-edge setup --gateway https://llm.example.com
-llmr-edge service install
-llmr-edge doctor
-```
+| Read this                              | To learn                                                                     |
+| -------------------------------------- | ---------------------------------------------------------------------------- |
+| [User guide](docs/USER_GUIDE.md)       | How routing works, setting up accounts, connecting apps, using the dashboard |
+| [Deployment guide](docs/DEPLOYMENT.md) | Running it on a server: access, updates, alerts, metrics and backups         |
+| [Design](docs/DESIGN.md)               | The architecture and the reasons behind it                                   |
+| [To-do list](docs/TODO.md)             | What is finished, and what still needs real-world testing                    |
 
-`setup` prints the settings to add to `~/.claude/settings.json`. Do not set `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` or `apiKeyHelper`, because each one replaces your plan login. On the gateway, add an `anthropic-key` account and the `edge` section from [`config/config.example.yaml`](config/config.example.yaml).
+## Project status
 
-> Anthropic says developers may not "intermediate" Claude login tokens, and its docs do not address a personal helper like this one. The token stays on your computer and goes only to Anthropic, but some risk remains. See [the design](docs/DESIGN.md#31-claude-plan). To stop using the edge, remove those settings.
-
-## Use it with Codex
-
-Add this to `~/.codex/config.toml`, replacing the hostname:
-
-```toml
-[model_providers.llmr]
-name = "llm-rudder"
-base_url = "https://llm.example.com/v1"
-model_catalog_url = "https://llm.example.com/router/codex/models"
-wire_api = "responses"
-env_key = "LLMR_KEY_CODEX"
-requires_openai_auth = false
-```
-
-Create `~/.codex/llmr.config.toml`:
-
-```toml
-model_provider = "llmr"
-model = "frontier"
-web_search = "disabled"
-```
-
-Then run `codex --profile llmr`.
-
-## Use your ChatGPT plan
-
-An eligible ChatGPT Plus or Pro plan can serve every client, through OpenAI's [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source) for open-source apps. Sign-in, moving it to a VPS, renewing it there, the plan's model list, streaming, and a tool call with its follow-up have been tested against a real plan.
-
-Before you turn it on:
-
-- **Use a public, open-source copy of this project.** OpenAI's guide covers open-source and locally hosted apps, and asks paid or hosted services to apply separately.
-- **Keep it to yourself.** OpenAI's guide does not cover a server that forwards other people's requests. Do not give anyone else a key that can reach this account. A client's `allow_accounts` setting limits which accounts its key can use.
-
-In `config/config.yaml`, set `enabled: true` under `chatgpt-plan`, check that the models in your tiers are on your plan, and restart with `docker compose up -d gateway`. Then, on your own computer, with `llmr-edge` installed as described above:
-
-```bash
-llmr-edge chatgpt login                # Continue with ChatGPT in your browser
-llmr-edge chatgpt push root@your-vps   # move the sign-in to the VPS over SSH
-llmr-edge chatgpt status --for root@your-vps
-```
-
-These commands assume the project is in `/opt/llm-rudder`. Use `--dir` if it is elsewhere. After the push, the VPS keeps the sign-in renewed and your computer no longer holds its tokens. The gateway picks up the new sign-in within a few seconds.
-
-**Set a limit for this app.** In [ChatGPT settings, under Usage](https://chatgpt.com/settings/usage), you can cap this app at 10% to 100% of your weekly usage and choose whether it may use credits. On Plus, the five-hour limit is shared with every other app you use with ChatGPT.
-
-**When the plan reaches a limit,** OpenAI gives no reset time. The gateway moves on to the next target, leaves the plan alone for 15 minutes, and then lets one request check it, doubling the wait up to 4 hours while it stays out. You get a notification with a link to your usage settings.
-
-**If you are told to sign in again,** run `llmr-edge chatgpt login --for root@your-vps`. To stop using the plan, run `llmr-edge chatgpt logout --for root@your-vps`. If you think the sign-in was exposed, also disconnect the app in ChatGPT settings.
-
-The plan route does not accept `max_tokens`, `temperature` or `top_p`, so the gateway leaves them out. Requests that need stored conversation state, files uploaded by ID, or hosted tools other than web search go to another target.
+Phases 1 to 5 are built, including the dashboard, metrics, alerts and encrypted backups. A deployed gateway has served real requests through a ChatGPT plan and through a New API gateway, including tool calls in all three API formats. The real OpenCode, Pi, Claude Code and Codex command-line clients are tested automatically against fake providers. Direct OpenAI, Anthropic and Gemini API keys, and those clients on real accounts, still need testing. The [to-do list](docs/TODO.md) has the details.
 
 ## Develop
 
 ```bash
-pnpm dev      # run the gateway with reload; needs config/config.yaml
-pnpm check    # lint, format check, type-check and tests
+pnpm dev                 # run the gateway with reload; needs config/config.yaml
+pnpm check               # lint, format check, type-check and tests
 pnpm smoke:claude-code   # run the real Claude Code CLI with a fake login and no outside network
 pnpm smoke:codex         # the same for Codex
 pnpm smoke:clients       # the same for OpenCode and Pi
 pnpm load-test           # measure added latency, stream memory and throughput
+pnpm docs:screenshots    # retake the screenshots in docs/images; needs Google Chrome
 ```
 
-Tests use fake upstreams. To include the MySQL tests, set `TEST_DATABASE_URL`.
+Tests use fake upstreams and recorded responses. To include the MySQL tests, set `TEST_DATABASE_URL`.
 
 ## License
 

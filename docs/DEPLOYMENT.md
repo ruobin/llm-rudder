@@ -42,6 +42,8 @@ docker compose run --rm --no-deps gateway node dist/cli.js check-config
 
 The command names anything that is missing. Warnings about a tier having one target or about notifications being off do not stop the gateway.
 
+Once the gateway is running, `docker compose exec gateway node dist/cli.js check-accounts --live` confirms that each key works and each model answers, including a tool call. Without `--live` it sends no model requests. [The user guide](USER_GUIDE.md#check-your-accounts) shows its output.
+
 To start with only a ChatGPT plan, replace the `accounts` and `tiers` sections with this. Check [Connect your ChatGPT plan](#5-connect-your-chatgpt-plan) first, because that route has its own conditions.
 
 ```yaml
@@ -138,7 +140,7 @@ Publish only `/v1/`, `/healthz`, `/router/edge/` and `/router/codex/`. Keep `/ro
 
 ## 5. Connect your ChatGPT plan
 
-Read [Use your ChatGPT plan](../README.md#use-your-chatgpt-plan) first. The account must be present and not disabled in `config/config.yaml`. Then, on your own computer:
+Read [Use your ChatGPT plan](USER_GUIDE.md#use-your-chatgpt-plan) first. The account must be present and not disabled in `config/config.yaml`. Then, on your own computer:
 
 ```bash
 git clone https://github.com/ruobin/llm-rudder.git && cd llm-rudder
@@ -162,14 +164,14 @@ Each client uses `https://your-host/v1` as its base URL, its own key, and the mo
 sed -n 's/^LLMR_KEY_OPENCODE=//p' /opt/llm-rudder/.env
 ```
 
-| Client                  | Key                    | Setup                                              |
-| ----------------------- | ---------------------- | -------------------------------------------------- |
-| OpenCode                | `LLMR_KEY_OPENCODE`    | [Design, Appendix A](DESIGN.md#opencode-phase-1)   |
-| Pi                      | `LLMR_KEY_PI`          | [Design, Appendix A](DESIGN.md#pi-phase-1)         |
-| Open WebUI or LibreChat | `LLMR_KEY_CHAT_UI`     | [Design, Appendix A](DESIGN.md#open-webui-phase-1) |
-| Your own scripts        | `LLMR_KEY_SCRIPTS`     | [Use it](../README.md#use-it)                      |
-| Claude Code             | `LLMR_KEY_CLAUDE_CODE` | [README](../README.md#use-it-with-claude-code)     |
-| Codex                   | `LLMR_KEY_CODEX`       | [README](../README.md#use-it-with-codex)           |
+| Client                  | Key                    | Setup                                                 |
+| ----------------------- | ---------------------- | ----------------------------------------------------- |
+| OpenCode                | `LLMR_KEY_OPENCODE`    | [Design, Appendix A](DESIGN.md#opencode-phase-1)      |
+| Pi                      | `LLMR_KEY_PI`          | [Design, Appendix A](DESIGN.md#pi-phase-1)            |
+| Open WebUI or LibreChat | `LLMR_KEY_CHAT_UI`     | [Design, Appendix A](DESIGN.md#open-webui-phase-1)    |
+| Your own scripts        | `LLMR_KEY_SCRIPTS`     | [User guide](USER_GUIDE.md#any-openai-compatible-app) |
+| Claude Code             | `LLMR_KEY_CLAUDE_CODE` | [User guide](USER_GUIDE.md#use-it-with-claude-code)   |
+| Codex                   | `LLMR_KEY_CODEX`       | [User guide](USER_GUIDE.md#use-it-with-codex)         |
 
 Anyone with a key can spend what that key can reach, so give each client its own key and keep them private.
 
@@ -186,6 +188,7 @@ Run these from `/opt/llm-rudder`.
 | Update               | `git pull --ff-only && docker compose up -d --build gateway`                |
 | Go back to a version | `git checkout <commit> && docker compose up -d --build gateway`             |
 | Check a config       | `docker compose run --rm --no-deps gateway node dist/cli.js check-config`   |
+| Check every account  | `docker compose exec gateway node dist/cli.js check-accounts --live`        |
 | Show the sign-in     | `docker compose exec -T gateway node dist/cli.js chatgpt status`            |
 
 Logs are JSON lines. They never contain prompts, answers or keys.
