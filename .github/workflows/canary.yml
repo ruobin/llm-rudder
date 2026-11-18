@@ -12,6 +12,7 @@ on:
       - ".github/workflows/canary.yml"
       - "apps/edge/dev/**"
       - "apps/gateway/dev/**"
+      - "apps/gateway/src/dev/**"
 
 permissions:
   contents: read
