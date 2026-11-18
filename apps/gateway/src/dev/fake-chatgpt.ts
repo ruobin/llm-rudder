@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { ChatGptCredential } from "@llm-router/shared";
+import type { ChatGptCredential } from "@llm-rudder/shared";
 
 interface ScriptedAnswer {
   status: number;

@@ -1,4 +1,4 @@
-import { globToRegExp } from "@llm-router/shared";
+import { globToRegExp } from "@llm-rudder/shared";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import type { Effort } from "../translate/ir.js";

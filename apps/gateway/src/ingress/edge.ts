@@ -1,4 +1,4 @@
-import type { EdgePlan, EdgeStep } from "@llm-router/shared";
+import type { EdgePlan, EdgeStep } from "@llm-rudder/shared";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { ClientConfig, Config } from "../config/load.js";

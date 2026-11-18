@@ -2,7 +2,7 @@ import {
   anthropicRequestHeaders,
   anthropicResponseHeaders,
   replaceTopLevelString,
-} from "@llm-router/shared";
+} from "@llm-rudder/shared";
 import type { FastifyError, FastifyInstance, FastifyRequest } from "fastify";
 import type { ClientConfig } from "../config/load.js";
 import { anthropicErrorBody, RouterError } from "../errors.js";

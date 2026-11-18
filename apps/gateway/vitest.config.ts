@@ -1,6 +1,6 @@
 import { defineConfig } from "vitest/config";
 
-const conditions = ["@llm-router/source", "node", "import", "default"];
+const conditions = ["@llm-rudder/source", "node", "import", "default"];
 
 export default defineConfig({
   resolve: { conditions },

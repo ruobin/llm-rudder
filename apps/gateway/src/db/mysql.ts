@@ -13,7 +13,7 @@ import * as schema from "./schema.js";
 
 const MAX_QUEUED_WRITES = 10_000;
 const MAX_WRITE_ATTEMPTS = 3;
-const MIGRATION_LOCK = "llm_router_migrations";
+const MIGRATION_LOCK = "llm_rudder_migrations";
 const migrationsFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
 const toDate = (time: number | undefined | null) =>

@@ -1,11 +1,11 @@
 {
-  "name": "@llm-router/shared",
+  "name": "@llm-rudder/shared",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": {
     ".": {
-      "@llm-router/source": "./src/index.ts",
+      "@llm-rudder/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }

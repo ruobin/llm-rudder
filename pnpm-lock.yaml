@@ -23,7 +23,7 @@ importers:
 
   apps/edge:
     dependencies:
-      '@llm-router/shared':
+      '@llm-rudder/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       jose:
@@ -48,7 +48,7 @@ importers:
 
   apps/gateway:
     dependencies:
-      '@llm-router/shared':
+      '@llm-rudder/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       drizzle-orm:

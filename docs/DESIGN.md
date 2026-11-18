@@ -1,13 +1,12 @@
-# llm-router — Design
+# llm-rudder — Design
 
-|           |                                                                                                                                                                |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status    | Draft 2, updated 2026-11-18 with Phases 1 to 4 as built. It replaces the local-first Python Draft 1, which stays in git history.                               |
-| Scope     | A personal model gateway on your own VPS, with a phased path to a production-grade service                                                                     |
-| Work plan | [`TODO.md`](TODO.md) splits the work into phases with checklists and exit criteria.                                                                            |
-| Reference | [`ROUTER_DESIGN.md`](ROUTER_DESIGN.md), an earlier proposal by another agent. [Appendix B](#appendix-b-what-changed) lists what this design keeps and changes. |
+|           |                                                                                                                                  |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Status    | Draft 2, updated 2026-11-18 with Phases 1 to 4 as built. It replaces the local-first Python Draft 1, which stays in git history. |
+| Scope     | A personal model gateway on your own VPS, with a phased path to a production-grade service                                       |
+| Work plan | [`TODO.md`](TODO.md) splits the work into phases with checklists and exit criteria.                                              |
 
-**In one sentence:** llm-router is one HTTPS endpoint on your VPS that turns `frontier`, `medium` and `flash` into real models across your subscriptions, API keys and third-party gateways, moves to the next option when one runs out, and warns you when it has to drop to a lower tier.
+**In one sentence:** llm-rudder is one HTTPS endpoint on your VPS that turns `frontier`, `medium` and `flash` into real models across your subscriptions, API keys and third-party gateways, moves to the next option when one runs out, and warns you when it has to drop to a lower tier.
 
 ## Contents
 
@@ -33,7 +32,7 @@ Appendices: [A. Client setup](#appendix-a-client-setup) · [B. What changed](#ap
 
 You pay for several kinds of model access: Claude, ChatGPT and Gemini plans, API keys for all three, and third-party gateways such as your own New API instance. You also use many clients: OpenCode, Pi, Claude Code, Codex, a chat UI, and your own scripts. Today each client is tied to one kind of access, and when that runs out the work stops.
 
-llm-router puts one endpoint in front of all of it:
+llm-rudder puts one endpoint in front of all of it:
 
 - A client asks for a **tier**: `frontier`, `medium` or `flash`.
 - Each tier is an **ordered list of targets**. A target is one model on one account, such as "GPT-6 Astra on my OpenAI key".
@@ -63,7 +62,7 @@ These are the conclusions from section 3. They shape the whole design.
 
 ### Build or reuse?
 
-Your New API instance already pools API keys and retries across channels, so this project should not rebuild that. LiteLLM also covers API-key failover. llm-router sits **in front of** them and adds what they do not do together: named tiers with fallback and warnings, subscription quota as state, per-client behavior, and a compliant path for each subscription. New API then becomes one good target among several.
+Your New API instance already pools API keys and retries across channels, so this project should not rebuild that. LiteLLM also covers API-key failover. llm-rudder sits **in front of** them and adds what they do not do together: named tiers with fallback and warnings, subscription quota as state, per-client behavior, and a compliant path for each subscription. New API then becomes one good target among several.
 
 ---
 
@@ -444,7 +443,7 @@ Facts from the client docs that shape the gateway:
 ### 8.2 Repository layout
 
 ```text
-llm-router/
+llm-rudder/
 ├── apps/
 │   ├── gateway/                 # Phase 1: the VPS service
 │   │   ├── src/
@@ -906,7 +905,7 @@ x-llmr-tier-fallback: frontier->medium
 **The note** is ordinary assistant text placed before the model's output:
 
 ```text
-> ⚠️ llm-router: `frontier` is unavailable (quota exhausted), so this reply uses `medium` (gemini-4-hydrogen).
+> ⚠️ llm-rudder: `frontier` is unavailable (quota exhausted), so this reply uses `medium` (gemini-4-hydrogen).
 ```
 
 It is **never** added when the request sets `response_format`, asks for more than one choice, or the client has `notice: none`. So structured output and scripts stay clean. In a stream it is sent just after the commit point, so it does not affect failover.
@@ -1410,7 +1409,7 @@ These are starting points. The gateway mostly waits on the network.
 ### 9.3 First deployment
 
 ```bash
-git clone <repo> /opt/llm-router && cd /opt/llm-router
+git clone https://github.com/ruobin/llm-rudder.git /opt/llm-rudder && cd /opt/llm-rudder
 cp .env.example .env && chmod 600 .env
 cp config/config.example.yaml config/config.yaml
 
@@ -1424,7 +1423,7 @@ docker compose --profile caddy up -d    # add --profile chat for Open WebUI
 curl https://llm.example.com/healthz
 ```
 
-**If the VPS already runs Nginx**, as your New API host does, skip the `caddy` profile and use `deploy/nginx/llm-router.conf.example`. Streaming needs these settings:
+**If the VPS already runs Nginx**, as your New API host does, skip the `caddy` profile and use `deploy/nginx/llm-rudder.conf.example`. Streaming needs these settings:
 
 ```nginx
 location /v1/ {
@@ -1585,7 +1584,7 @@ Replace `https://llm.example.com` with your gateway. These examples are built fr
   "model": "llmr/frontier",
   "providers": {
     "llmr": {
-      "name": "llm-router",
+      "name": "llm-rudder",
       "package": "@opencode/ai/providers/openai-compatible",
       "settings": {
         "baseURL": "https://llm.example.com/v1",
@@ -1609,7 +1608,7 @@ Replace `https://llm.example.com` with your gateway. These examples are built fr
 {
   "providers": {
     "llmr": {
-      "name": "llm-router",
+      "name": "llm-rudder",
       "baseUrl": "https://llm.example.com/v1",
       "api": "openai-completions",
       "apiKey": "$LLMR_KEY_PI",
@@ -1664,7 +1663,7 @@ The `chat` profile in `docker-compose.yml` sets this up for you. It connects to 
 ```yaml
 endpoints:
   custom:
-    - name: llm-router
+    - name: llm-rudder
       apiKey: "${LLMR_KEY_CHAT_UI}"
       baseURL: "https://llm.example.com/v1"
       models: { default: ["frontier", "medium", "flash"], fetch: true }
@@ -1694,7 +1693,7 @@ console.log("served by", response.headers.get("x-llmr-target"));
 On each computer that runs Claude Code:
 
 ```bash
-pnpm install && pnpm --filter @llm-router/edge build
+pnpm install && pnpm --filter @llm-rudder/edge build
 node apps/edge/dist/llmr-edge.mjs install     # adds ~/.local/bin/llmr-edge
 LLMR_ROUTER_KEY="$LLMR_KEY_CLAUDE_CODE" llmr-edge setup --gateway https://llm.example.com
 llmr-edge service install                     # starts it now and at each login
@@ -1730,7 +1729,7 @@ Codex keeps its normal ChatGPT login by default. Add the provider to `~/.codex/c
 
 ```toml
 [model_providers.llmr]
-name = "llm-router"
+name = "llm-rudder"
 base_url = "https://llm.example.com/v1"
 model_catalog_url = "https://llm.example.com/router/codex/models"
 wire_api = "responses"
@@ -1766,7 +1765,7 @@ Run it with `codex --profile llmr`. The catalog offers each tier as a model. Web
 | First phase          | Same-dialect lanes for Claude Code and OpenAI clients | OpenAI-compatible gateway on the VPS                    |
 | Security             | Mostly Phase 4                                        | Phase 1                                                 |
 
-**From `ROUTER_DESIGN.md`:**
+**From an earlier gateway proposal:**
 
 - **Kept:** the documented API subset, an error taxonomy with per-attempt timeouts, failover only before stream content, session stickiness, stable prompt prefixes, separate token categories in integer micro-USD, and no content in logs.
 - **Changed:** subscriptions and quota windows are first-class, budget exhaustion now falls back with a warning instead of never changing tier, and the service starts as a single process with MySQL instead of Redis plus Postgres.

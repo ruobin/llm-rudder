@@ -118,8 +118,8 @@ function codexModel(tier: TierConfig, index: number, runtime: Runtime): JsonObje
     tier.contextWindow ?? (windows.length > 0 ? Math.min(...windows) : DEFAULT_CONTEXT_WINDOW);
   return {
     slug: tier.name,
-    display_name: `${tier.name} (llm-router)`,
-    description: `Routed by llm-router to the best available ${tier.name} model.`,
+    display_name: `${tier.name} (llm-rudder)`,
+    description: `Routed by llm-rudder to the best available ${tier.name} model.`,
     base_instructions: CODEX_INSTRUCTIONS,
     default_reasoning_level: "medium",
     supported_reasoning_levels: REASONING_LEVELS,

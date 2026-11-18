@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chatGptEndpoints } from "@llm-router/shared";
+import { chatGptEndpoints } from "@llm-rudder/shared";
 import { pino } from "pino";
 import { buildApp } from "../src/app.js";
 import { importCredential } from "../src/chatgpt/session.js";

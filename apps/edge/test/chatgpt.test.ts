@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
-import { chatGptEndpoints, CHATGPT_PLAN_SCOPE, type ChatGptEndpoints } from "@llm-router/shared";
+import { chatGptEndpoints, CHATGPT_PLAN_SCOPE, type ChatGptEndpoints } from "@llm-rudder/shared";
 import { exportJWK, generateKeyPair, SignJWT, type CryptoKey } from "jose";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -164,7 +164,7 @@ describe("first sign-in", () => {
     const query = authorization();
     expect(Object.fromEntries(query)).toMatchObject({
       client_id: "dynamic_agent_client",
-      agent_name_hint: "llm-router",
+      agent_name_hint: "llm-rudder",
       ext_agent_host_id: hostId,
       response_type: "code",
       scope: ALL_SCOPES,

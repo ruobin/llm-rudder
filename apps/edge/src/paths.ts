@@ -18,10 +18,10 @@ export type Env = Record<string, string | undefined>;
 export function edgePaths(env: Env = process.env): EdgePaths {
   const home = env.HOME || homedir();
   const configDir =
-    env.LLMR_EDGE_CONFIG_DIR ?? join(env.XDG_CONFIG_HOME ?? join(home, ".config"), "llm-router");
+    env.LLMR_EDGE_CONFIG_DIR ?? join(env.XDG_CONFIG_HOME ?? join(home, ".config"), "llm-rudder");
   const stateDir =
-    env.LLMR_EDGE_STATE_DIR ?? join(env.XDG_STATE_HOME ?? join(home, ".local/state"), "llm-router");
-  const dataDir = join(env.XDG_DATA_HOME ?? join(home, ".local/share"), "llm-router");
+    env.LLMR_EDGE_STATE_DIR ?? join(env.XDG_STATE_HOME ?? join(home, ".local/state"), "llm-rudder");
+  const dataDir = join(env.XDG_DATA_HOME ?? join(home, ".local/share"), "llm-rudder");
   return {
     home,
     configFile: join(configDir, "edge.json"),

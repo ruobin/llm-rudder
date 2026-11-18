@@ -328,9 +328,9 @@ describe("gateway", () => {
         const response = await gateway.post({ model: "frontier", messages: userMessage(text) });
         return (await readJson(response)).choices[0].message.content as string;
       };
-      expect(await ask("one")).toContain("llm-router");
+      expect(await ask("one")).toContain("llm-rudder");
       expect(await ask("one")).toBe("Hello from m-one");
-      expect(await ask("two")).toContain("llm-router");
+      expect(await ask("two")).toContain("llm-rudder");
     });
 
     it("uses a session header to recognize a conversation", async () => {
@@ -342,7 +342,7 @@ describe("gateway", () => {
         );
         return (await readJson(response)).choices[0].message.content as string;
       };
-      expect(await ask("one")).toContain("llm-router");
+      expect(await ask("one")).toContain("llm-rudder");
       expect(await ask("different text")).toBe("Hello from m-one");
     });
 

@@ -2,7 +2,7 @@ import type { JsonObject } from "../types.js";
 import type { RequestContext } from "./context.js";
 
 export function noticeText(requested: string, served: string, model: string, reason: string) {
-  return `> ⚠️ llm-router: \`${requested}\` is unavailable (${reason}), so this reply uses \`${served}\` (${model}).\n\n`;
+  return `> ⚠️ llm-rudder: \`${requested}\` is unavailable (${reason}), so this reply uses \`${served}\` (${model}).\n\n`;
 }
 
 /** Structured output, multiple choices and opted-out clients never get a note. */
@@ -31,7 +31,7 @@ export function noticeChunk(template: JsonObject, text: string, includeRole: boo
     id: template.id ?? "chatcmpl-llmr",
     object: "chat.completion.chunk",
     created: template.created ?? Math.floor(Date.now() / 1000),
-    model: template.model ?? "llm-router",
+    model: template.model ?? "llm-rudder",
     choices: [{ index: 0, delta, finish_reason: null }],
   };
   return `data: ${JSON.stringify(chunk)}\n\n`;

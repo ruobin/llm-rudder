@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chatGptEndpoints, CHATGPT_USAGE_URL, type ChatGptEndpoints } from "@llm-router/shared";
+import { chatGptEndpoints, CHATGPT_USAGE_URL, type ChatGptEndpoints } from "@llm-rudder/shared";
 import { pino, type Logger } from "pino";
 import { ClientLimits, FailedAuthThrottle } from "./auth/limits.js";
 import { BudgetManager, dayPeriod, monthPeriod } from "./billing/budgets.js";

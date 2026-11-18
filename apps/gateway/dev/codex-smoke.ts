@@ -62,7 +62,7 @@ model_provider = "llmr"
 web_search = "disabled"
 
 [model_providers.llmr]
-name = "llm-router"
+name = "llm-rudder"
 base_url = "${gateway.url}/v1"
 model_catalog_url = "${gateway.url}/router/codex/models"
 wire_api = "responses"

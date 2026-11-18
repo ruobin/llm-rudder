@@ -97,7 +97,7 @@ export function registerChatRoutes(app: FastifyInstance, runtime: Runtime): void
         id: tier.name,
         object: "model",
         created,
-        owned_by: "llm-router",
+        owned_by: "llm-rudder",
         ...(tier.contextWindow === undefined ? {} : { context_window: tier.contextWindow }),
         ...(tier.maxOutputTokens === undefined ? {} : { max_output_tokens: tier.maxOutputTokens }),
       })),

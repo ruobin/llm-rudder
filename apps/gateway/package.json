@@ -1,5 +1,5 @@
 {
-  "name": "@llm-router/gateway",
+  "name": "@llm-rudder/gateway",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,20 +9,20 @@
     "drizzle"
   ],
   "scripts": {
-    "dev": "tsx watch --conditions=@llm-router/source src/main.ts",
+    "dev": "tsx watch --conditions=@llm-rudder/source src/main.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
-    "cli": "tsx --conditions=@llm-router/source src/cli.ts",
-    "demo": "tsx --conditions=@llm-router/source src/dev/demo.ts",
+    "cli": "tsx --conditions=@llm-rudder/source src/cli.ts",
+    "demo": "tsx --conditions=@llm-rudder/source src/dev/demo.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "smoke:codex": "tsx --conditions=@llm-router/source dev/codex-smoke.ts",
-    "smoke:clients": "tsx --conditions=@llm-router/source dev/clients-smoke.ts"
+    "smoke:codex": "tsx --conditions=@llm-rudder/source dev/codex-smoke.ts",
+    "smoke:clients": "tsx --conditions=@llm-rudder/source dev/clients-smoke.ts"
   },
   "dependencies": {
-    "@llm-router/shared": "workspace:*",
+    "@llm-rudder/shared": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.8",
     "mysql2": "^3.24.6",

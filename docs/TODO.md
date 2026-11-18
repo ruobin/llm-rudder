@@ -1,4 +1,4 @@
-# llm-router — To-do by phase
+# llm-rudder — To-do by phase
 
 This is the working checklist. [`DESIGN.md`](DESIGN.md) explains why. Each phase ends with something you can use, and with exit criteria that show it works.
 
@@ -189,8 +189,7 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 
 **Goal:** your ChatGPT plan serves every client.
 
-- [x] MIT license
-- [ ] **(you)** Make the repository public, before turning the account on
+- [x] Public repository under the MIT license
 - [x] Re-check OpenAI's Sign in with ChatGPT docs
 - [x] `llmr-edge chatgpt login` on the laptop: PKCE, loopback callback, ID-token validation
 - [x] VPS host ID, created before the credential transfer

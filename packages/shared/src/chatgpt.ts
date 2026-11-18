@@ -14,7 +14,7 @@ export const CHATGPT_SCOPES = [
 ];
 export const CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage";
 /** Sent to OpenAI as this app's name during first-time registration. */
-export const CHATGPT_AGENT_NAME = "llm-router";
+export const CHATGPT_AGENT_NAME = "llm-rudder";
 /** The gateway account a sign-in is sent to, unless you name another. */
 export const CHATGPT_DEFAULT_ACCOUNT = "chatgpt-plan";
 

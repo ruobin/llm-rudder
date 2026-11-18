@@ -1,4 +1,4 @@
-# llm-router
+# llm-rudder
 
 A personal LLM gateway. Clients ask for `frontier`, `medium` or `flash`. The gateway picks a real model from your API keys and OpenAI-compatible gateways, moves to the next one when a target fails or runs out of quota, and drops to another tier with a warning instead of failing the task.
 
@@ -20,7 +20,7 @@ The demo walks through normal routing, failover, tier fallback with a warning, a
 Use a VPS in a region your providers support, such as the United States, Singapore or Taiwan. Hong Kong and mainland China are not supported by Anthropic, OpenAI or Google. See [the design](docs/DESIGN.md#35-where-the-vps-may-run).
 
 ```bash
-git clone <this repository> /opt/llm-router && cd /opt/llm-router
+git clone https://github.com/ruobin/llm-rudder.git /opt/llm-rudder && cd /opt/llm-rudder
 cp .env.example .env && chmod 600 .env
 cp config/config.example.yaml config/config.yaml
 
@@ -35,7 +35,7 @@ docker compose --profile caddy up -d         # add --profile chat for Open WebUI
 curl https://llm.example.com/healthz
 ```
 
-If the VPS already runs Nginx, leave out the `caddy` profile and adapt [`deploy/nginx/llm-router.conf.example`](deploy/nginx/llm-router.conf.example).
+If the VPS already runs Nginx, leave out the `caddy` profile and adapt [`deploy/nginx/llm-rudder.conf.example`](deploy/nginx/llm-rudder.conf.example).
 
 ## Use it
 
@@ -68,7 +68,7 @@ curl -H "Authorization: Bearer $LLMR_ADMIN_KEY" http://127.0.0.1:4141/router/sta
 Claude Code talks to `llmr-edge`, a small program on your own computer. The edge sends requests to Anthropic with your normal login. Only when your plan reports a limit does it send the request to your gateway, with the Claude login removed, so the login never reaches the VPS.
 
 ```bash
-pnpm install && pnpm --filter @llm-router/edge build
+pnpm install && pnpm --filter @llm-rudder/edge build
 node apps/edge/dist/llmr-edge.mjs install
 LLMR_ROUTER_KEY="$LLMR_KEY_CLAUDE_CODE" llmr-edge setup --gateway https://llm.example.com
 llmr-edge service install
@@ -85,7 +85,7 @@ Add this to `~/.codex/config.toml`, replacing the hostname:
 
 ```toml
 [model_providers.llmr]
-name = "llm-router"
+name = "llm-rudder"
 base_url = "https://llm.example.com/v1"
 model_catalog_url = "https://llm.example.com/router/codex/models"
 wire_api = "responses"
@@ -120,7 +120,7 @@ llmr-edge chatgpt push root@your-vps   # move the sign-in to the VPS over SSH
 llmr-edge chatgpt status --for root@your-vps
 ```
 
-These commands assume the project is in `/opt/llm-router`. Use `--dir` if it is elsewhere. After the push, the VPS keeps the sign-in renewed and your computer no longer holds its tokens. The gateway picks up the new sign-in within a few seconds.
+These commands assume the project is in `/opt/llm-rudder`. Use `--dir` if it is elsewhere. After the push, the VPS keeps the sign-in renewed and your computer no longer holds its tokens. The gateway picks up the new sign-in within a few seconds.
 
 **Set a limit for this app.** In [ChatGPT settings, under Usage](https://chatgpt.com/settings/usage), you can cap this app at 10% to 100% of your weekly usage and choose whether it may use credits. On Plus, the five-hour limit is shared with every other app you use with ChatGPT.
 

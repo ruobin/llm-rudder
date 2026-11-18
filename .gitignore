@@ -12,5 +12,8 @@ config/config.yaml
 # Default location of the ChatGPT sign-in when running outside Docker
 data/
 
+# Private notes that stay on your computer
+docs/private/
+
 # Logs
 *.log

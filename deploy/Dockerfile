@@ -6,12 +6,12 @@ WORKDIR /repo
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY apps/gateway/package.json apps/gateway/
 COPY packages/shared/package.json packages/shared/
-RUN pnpm install --frozen-lockfile --filter "@llm-router/gateway..."
+RUN pnpm install --frozen-lockfile --filter "@llm-rudder/gateway..."
 
 COPY packages/shared packages/shared
 COPY apps/gateway apps/gateway
-RUN pnpm --filter "@llm-router/gateway..." build
-RUN pnpm --filter @llm-router/gateway deploy --legacy --prod /out
+RUN pnpm --filter "@llm-rudder/gateway..." build
+RUN pnpm --filter @llm-rudder/gateway deploy --legacy --prod /out
 
 FROM node:26-slim
 ENV NODE_ENV=production

@@ -4,7 +4,7 @@ import {
   chatGptEndpoints,
   revokeChatGptSession,
   withoutChatGptTokens,
-} from "@llm-router/shared";
+} from "@llm-rudder/shared";
 import { generateKey } from "./auth/keys.js";
 import {
   credentialPath,

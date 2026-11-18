@@ -63,7 +63,7 @@ export class HttpUpstreamClient implements UpstreamClient {
     const headers: Record<string, string> = {
       "content-type": "application/json",
       accept: options.stream ? "text/event-stream" : "application/json",
-      "user-agent": "llm-router/0.1",
+      "user-agent": "llm-rudder/0.1",
       "x-llmr-hop": this.instanceId,
     };
     if (account.apiKey) headers.authorization = `Bearer ${account.apiKey}`;
@@ -92,7 +92,7 @@ export class HttpUpstreamClient implements UpstreamClient {
     const headers: Record<string, string> = {
       "content-type": "application/json",
       accept: request.stream ? "text/event-stream" : "application/json",
-      "user-agent": "llm-router/0.1",
+      "user-agent": "llm-rudder/0.1",
     };
     const credential = request.bearerToken ?? account.apiKey;
     if (credential) headers.authorization = `Bearer ${credential}`;
@@ -124,7 +124,7 @@ export class HttpUpstreamClient implements UpstreamClient {
       ...request.headers,
       "content-type": "application/json",
       accept: request.stream ? "text/event-stream" : "application/json",
-      "user-agent": "llm-router/0.1",
+      "user-agent": "llm-rudder/0.1",
       "x-llmr-hop": this.instanceId,
     };
     if (account.apiKey) {

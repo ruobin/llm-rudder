@@ -4,7 +4,7 @@ import {
   type EdgePlan,
   type EdgeReport,
   type EdgeRoute,
-} from "@llm-router/shared";
+} from "@llm-rudder/shared";
 import type { EdgeConfig } from "./config.js";
 import { readJsonFile, writePrivateFile } from "./files.js";
 import { readResponse, type HttpClient } from "./http-client.js";

@@ -34,7 +34,7 @@ export function ntfySink(url: string): EventSink {
     await fetch(url, {
       method: "POST",
       headers: {
-        Title: "llm-router",
+        Title: "llm-rudder",
         Tags: event.kind.includes("recovered") || event.kind.endsWith("ended") ? "ok" : "warning",
         Priority: URGENT_KINDS.has(event.kind) ? "4" : "3",
       },

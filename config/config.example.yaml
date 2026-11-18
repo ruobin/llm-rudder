@@ -67,7 +67,7 @@ accounts:
     trust: first_party
 
   # Your ChatGPT plan, through OpenAI's Sign in with ChatGPT. OpenAI offers this route
-  # to open-source apps, so leave it off until your copy of this project is public.
+  # to open-source apps, so use it from a public copy of this project.
   # It is for your own use. See "Use your ChatGPT plan" in the README.
   chatgpt-plan:
     kind: chatgpt_plan

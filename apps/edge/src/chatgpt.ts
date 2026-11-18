@@ -17,7 +17,7 @@ import {
   withoutChatGptTokens,
   type ChatGptCredential,
   type ChatGptEndpoints,
-} from "@llm-router/shared";
+} from "@llm-rudder/shared";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { readJsonFile, writePrivateFile } from "./files.js";
 import type { EdgePaths } from "./paths.js";
@@ -30,7 +30,7 @@ const MAX_AUTHORIZATIONS = 2;
 const SSH_TARGET = /^[A-Za-z0-9][A-Za-z0-9._@:-]*$/;
 const HOST_ID = /^urn:uuid:[0-9a-f-]{36}$/i;
 
-export const DEFAULT_VPS_DIR = "/opt/llm-router";
+export const DEFAULT_VPS_DIR = "/opt/llm-rudder";
 
 export class ChatGptLoginError extends Error {}
 

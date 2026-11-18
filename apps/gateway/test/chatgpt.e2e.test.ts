@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
-import { CHATGPT_USAGE_URL } from "@llm-router/shared";
+import { CHATGPT_USAGE_URL } from "@llm-rudder/shared";
 import OpenAI from "openai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { credentialPath, importCredential } from "../src/chatgpt/session.js";

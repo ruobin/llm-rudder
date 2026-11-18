@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chatGptEndpoints } from "@llm-router/shared";
+import { chatGptEndpoints } from "@llm-rudder/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ChatGptError,
@@ -365,7 +365,7 @@ describe("the gateway's chatgpt command", () => {
   const run = (args: string[], input = "", env: Record<string, string> = {}) =>
     spawnSync(
       process.execPath,
-      ["--import", "tsx", "--conditions=@llm-router/source", cli, "chatgpt", ...args],
+      ["--import", "tsx", "--conditions=@llm-rudder/source", cli, "chatgpt", ...args],
       {
         cwd: fileURLToPath(new URL("..", import.meta.url)),
         input,

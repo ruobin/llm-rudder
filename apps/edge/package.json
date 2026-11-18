@@ -1,5 +1,5 @@
 {
-  "name": "@llm-router/edge",
+  "name": "@llm-rudder/edge",
   "version": "0.1.0",
   "private": true,
   "description": "Local helper that keeps Claude Code on your plan and overflows to the gateway",
@@ -11,14 +11,14 @@
     "dist"
   ],
   "scripts": {
-    "build": "esbuild src/cli.ts --bundle --platform=node --target=node22 --format=esm --conditions=@llm-router/source --banner:js='#!/usr/bin/env node' --outfile=dist/llmr-edge.mjs --log-level=warning",
-    "cli": "tsx --conditions=@llm-router/source src/cli.ts",
-    "smoke:claude-code": "tsx --conditions=@llm-router/source dev/claude-code-smoke.ts",
+    "build": "esbuild src/cli.ts --bundle --platform=node --target=node22 --format=esm --conditions=@llm-rudder/source --banner:js='#!/usr/bin/env node' --outfile=dist/llmr-edge.mjs --log-level=warning",
+    "cli": "tsx --conditions=@llm-rudder/source src/cli.ts",
+    "smoke:claude-code": "tsx --conditions=@llm-rudder/source dev/claude-code-smoke.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@llm-router/shared": "workspace:*",
+    "@llm-rudder/shared": "workspace:*",
     "jose": "^6.2.17"
   },
   "devDependencies": {

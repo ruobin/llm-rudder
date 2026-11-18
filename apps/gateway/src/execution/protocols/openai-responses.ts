@@ -1,4 +1,4 @@
-import { replaceTopLevelString } from "@llm-router/shared";
+import { replaceTopLevelString } from "@llm-rudder/shared";
 import { ulid } from "../../ids.js";
 import type { Classified, JsonObject, Usage } from "../../types.js";
 import {

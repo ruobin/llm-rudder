@@ -1,4 +1,4 @@
-import type { EdgeLimitReport } from "@llm-router/shared";
+import type { EdgeLimitReport } from "@llm-rudder/shared";
 import { readJsonFile, writePrivateFile } from "./files.js";
 import { modelFamily, type PlanSignal } from "./plan-limit.js";
 

@@ -9,7 +9,7 @@ import {
   withoutChatGptTokens,
   type ChatGptCredential,
   type ChatGptEndpoints,
-} from "@llm-router/shared";
+} from "@llm-rudder/shared";
 import type { Classified } from "../types.js";
 
 const REFRESH_BEFORE_EXPIRY_MS = 5 * 60_000;

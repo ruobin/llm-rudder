@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { chatGptEndpoints, globToRegExp } from "@llm-router/shared";
+import { chatGptEndpoints, globToRegExp } from "@llm-rudder/shared";
 import { parse as parseYaml } from "yaml";
 import type { z } from "zod";
 import { hashKey } from "../auth/keys.js";

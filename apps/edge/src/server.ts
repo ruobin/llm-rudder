@@ -14,7 +14,7 @@ import {
   replaceTopLevelString,
   type EdgeRoute,
   type EdgeStep,
-} from "@llm-router/shared";
+} from "@llm-rudder/shared";
 import type { EdgeConfig } from "./config.js";
 import type { GatewayLink } from "./gateway-link.js";
 import { readResponse, type HttpClient } from "./http-client.js";

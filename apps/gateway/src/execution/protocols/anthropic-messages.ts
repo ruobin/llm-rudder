@@ -1,4 +1,4 @@
-import { anthropicResponseHeaders, replaceTopLevelString } from "@llm-router/shared";
+import { anthropicResponseHeaders, replaceTopLevelString } from "@llm-rudder/shared";
 import type { Classified, JsonObject, Usage } from "../../types.js";
 import {
   AnthropicUsage,

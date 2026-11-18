@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 
 const TIMEOUT_MS = 3000;
-const TITLE = "llm-router";
+const TITLE = "llm-rudder";
 
 /** Builds the command for a desktop notification, or null when none is available. */
 export function notificationCommand(

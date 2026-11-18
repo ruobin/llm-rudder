@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { EdgePaths } from "./paths.js";
 
-export const LAUNCHD_LABEL = "org.llm-router.edge";
+export const LAUNCHD_LABEL = "org.llm-rudder.edge";
 export const SYSTEMD_UNIT = "llmr-edge.service";
 
 const escapeXml = (text: string) =>
@@ -48,7 +48,7 @@ const quoteSystemd = (text: string) => `"${text.replace(/(["\\])/g, "\\$1").repl
 
 export function systemdUnit({ node, program }: ServiceProgram): string {
   return `[Unit]
-Description=llm-router edge for Claude Code
+Description=llm-rudder edge for Claude Code
 
 [Service]
 ExecStart=${quoteSystemd(node)} ${quoteSystemd(program)} serve

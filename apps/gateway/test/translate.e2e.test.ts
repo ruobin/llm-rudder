@@ -285,7 +285,7 @@ describe("Chat Completions clients on other formats", () => {
     });
     let text = "";
     for await (const chunk of stream) text += chunk.choices[0]?.delta.content ?? "";
-    expect(text).toMatch(/^> ⚠️ llm-router: `claude` is unavailable.*\n\nHello from gpt/s);
+    expect(text).toMatch(/^> ⚠️ llm-rudder: `claude` is unavailable.*\n\nHello from gpt/s);
   });
 
   it("reports upstream errors in OpenAI's format", async () => {
@@ -703,8 +703,8 @@ describe("Responses clients", () => {
     const text = await (
       await postRaw("/v1/responses", { model: "gpt", input: "Hi", stream: true }, CHAT_KEY)
     ).text();
-    expect(text).toContain("llm-router: `gpt` is unavailable");
-    expect(text.indexOf("llm-router")).toBeLessThan(text.indexOf("Hello"));
+    expect(text).toContain("llm-rudder: `gpt` is unavailable");
+    expect(text.indexOf("llm-rudder")).toBeLessThan(text.indexOf("Hello"));
   });
 
   it("serves the Codex model catalog", async () => {

@@ -215,7 +215,7 @@ try {
       model: "llmr/claude",
       providers: {
         llmr: {
-          name: "llm-router",
+          name: "llm-rudder",
           package: "@opencode/ai/providers/openai-compatible",
           settings: { baseURL: `${gateway.url}/v1`, apiKey: "{env:LLMR_KEY_OPENCODE}" },
           models: { claude: limit, gpt: limit, plan: limit, chatgw: limit },
@@ -259,7 +259,7 @@ try {
     writeJson(join(home, ".pi/agent/models.json"), {
       providers: {
         llmr: {
-          name: "llm-router",
+          name: "llm-rudder",
           baseUrl: `${gateway.url}/v1`,
           api: "openai-completions",
           apiKey: "$LLMR_KEY_PI",

@@ -409,7 +409,7 @@ describe("notifications", () => {
   it("uses notify-send on Linux and nothing elsewhere", () => {
     expect(notificationCommand("linux", "hi")).toEqual({
       file: "notify-send",
-      args: ["--", "llm-router", "hi"],
+      args: ["--", "llm-rudder", "hi"],
     });
     expect(notificationCommand("win32", "hi")).toBeNull();
   });
@@ -456,7 +456,7 @@ describe("service files", () => {
         "launchctl",
         "bootstrap",
         "gui/501",
-        "/home/me/Library/LaunchAgents/org.llm-router.edge.plist",
+        "/home/me/Library/LaunchAgents/org.llm-rudder.edge.plist",
       ],
     ]);
     expect(serviceFile("linux", paths, program, 1000)?.path).toBe(

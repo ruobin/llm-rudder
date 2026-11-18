@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CHATGPT_DEFAULT_ACCOUNT, chatGptEndpoints, CHATGPT_USAGE_URL } from "@llm-router/shared";
+import { CHATGPT_DEFAULT_ACCOUNT, chatGptEndpoints, CHATGPT_USAGE_URL } from "@llm-rudder/shared";
 import { startEdge } from "./app.js";
 import {
   configIsExposed,
@@ -57,7 +57,7 @@ Usage:
   llmr-edge chatgpt login --for TARGET   Sign the VPS in again
   llmr-edge chatgpt status [--for TARGET]
   llmr-edge chatgpt logout [--for TARGET]
-                                  With a TARGET, these use --dir (default /opt/llm-router)
+                                  With a TARGET, these use --dir (default /opt/llm-rudder)
                                   and --account (default chatgpt-plan)
 `;
 
@@ -144,7 +144,7 @@ function setup(paths: EdgePaths, args: string[]): void {
 function install(paths: EdgePaths): void {
   const source = fileURLToPath(import.meta.url);
   if (!source.endsWith(".mjs")) {
-    throw new EdgeConfigError("Build first: pnpm --filter @llm-router/edge build");
+    throw new EdgeConfigError("Build first: pnpm --filter @llm-rudder/edge build");
   }
   mkdirSync(dirname(paths.programFile), { recursive: true });
   if (source !== paths.programFile) copyFileSync(source, paths.programFile);

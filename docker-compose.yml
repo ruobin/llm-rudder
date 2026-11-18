@@ -1,16 +1,16 @@
-name: llm-router
+name: llm-rudder
 
 services:
   gateway:
     build:
       context: .
       dockerfile: deploy/Dockerfile
-    image: llm-router-gateway:local
+    image: llm-rudder-gateway:local
     restart: unless-stopped
     init: true
     env_file: .env
     environment:
-      DATABASE_URL: mysql://llmr:${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}@mysql:3306/llm_router
+      DATABASE_URL: mysql://llmr:${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}@mysql:3306/llm_rudder
     volumes:
       - ./config:/app/config:ro
       - gateway-state:/state
@@ -34,7 +34,7 @@ services:
     image: mysql:8.4
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: llm_router
+      MYSQL_DATABASE: llm_rudder
       MYSQL_USER: llmr
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}

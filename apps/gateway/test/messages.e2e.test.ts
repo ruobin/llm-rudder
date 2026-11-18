@@ -308,7 +308,7 @@ describe("POST /v1/messages", () => {
     expect(response.headers.get("x-llmr-tier-fallback")).toBe("frontier->medium");
     expect(gateway.events.map((event) => event.kind)).toContain("tier_fallback_started");
     // Claude Code warns through the status line, so the reply itself is untouched.
-    expect(JSON.stringify(await readJson(response))).not.toContain("llm-router");
+    expect(JSON.stringify(await readJson(response))).not.toContain("llm-rudder");
   });
 
   it("reports exhaustion in Anthropic's format", async () => {
