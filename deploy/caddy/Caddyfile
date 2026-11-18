@@ -20,3 +20,7 @@
 		flush_interval -1
 	}
 }
+
+{$LLMR_DASHBOARD_DOMAIN:dashboard.localhost} {
+	reverse_proxy dashboard:3000
+}

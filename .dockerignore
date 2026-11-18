@@ -1,5 +1,6 @@
 **/node_modules
 **/dist
+**/.next
 .git
 .github
 .env
@@ -7,3 +8,4 @@
 docs
 config/config.yaml
 **/*.log
+apps/dashboard/test

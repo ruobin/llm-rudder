@@ -50,6 +50,33 @@ services:
       retries: 30
       start_period: 20s
 
+  # Web dashboard: docker compose --profile dashboard up -d
+  dashboard:
+    build:
+      context: .
+      dockerfile: deploy/dashboard.Dockerfile
+    image: llm-rudder-dashboard:local
+    profiles: [dashboard]
+    restart: unless-stopped
+    init: true
+    environment:
+      LLMR_GATEWAY_URL: http://gateway:4141
+      LLMR_ADMIN_KEY: ${LLMR_ADMIN_KEY:-}
+      LLMR_DASHBOARD_PASSWORD_HASH: ${LLMR_DASHBOARD_PASSWORD_HASH:-}
+      LLMR_DASHBOARD_SESSION_SECRET: ${LLMR_DASHBOARD_SESSION_SECRET:-}
+    ports:
+      - 127.0.0.1:${LLMR_DASHBOARD_PORT:-4150}:3000
+    depends_on:
+      - gateway
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/apps/dashboard/.next/cache:uid=1000,gid=1000
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
   # Use on a fresh VPS: docker compose --profile caddy up -d
   caddy:
     image: caddy:2-alpine
@@ -58,6 +85,7 @@ services:
     environment:
       LLMR_DOMAIN: ${LLMR_DOMAIN:-}
       LLMR_CHAT_DOMAIN: ${LLMR_CHAT_DOMAIN:-chat.localhost}
+      LLMR_DASHBOARD_DOMAIN: ${LLMR_DASHBOARD_DOMAIN:-dashboard.localhost}
     ports:
       - 80:80
       - 443:443
