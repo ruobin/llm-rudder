@@ -15,5 +15,16 @@ export function parseUsage(value: unknown): Usage | null {
     count(details.cached_tokens ?? usage.cached_tokens ?? usage.prompt_cache_hit_tokens),
   );
   if (prompt === 0 && output === 0) return null;
-  return { inputTokens: prompt - cached, cachedTokens: cached, outputTokens: output };
+  const cacheWrites = Math.min(prompt - cached, count(details.cache_write_tokens));
+  const outputDetails = (usage.completion_tokens_details ??
+    usage.output_tokens_details ??
+    {}) as JsonObject;
+  const reasoning = count(outputDetails.reasoning_tokens);
+  return {
+    inputTokens: prompt - cached - cacheWrites,
+    cachedTokens: cached,
+    outputTokens: output,
+    ...(cacheWrites > 0 ? { cacheWrite5mTokens: cacheWrites } : {}),
+    ...(reasoning > 0 ? { reasoningTokens: reasoning } : {}),
+  };
 }

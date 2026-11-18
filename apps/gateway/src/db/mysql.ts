@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { drizzle, type MySql2Database } from "drizzle-orm/mysql2";
 import { migrate } from "drizzle-orm/mysql2/migrator";
 import { createPool, type Pool } from "mysql2/promise";
@@ -7,6 +7,7 @@ import type { Logger } from "pino";
 import type { SpendRow } from "../billing/budgets.js";
 import type { LedgerEntry, Persistence } from "../ledger/records.js";
 import type { RouterEvent } from "../notify/notifier.js";
+import type { PinEntry } from "../routing/pins.js";
 import type { QuotaEntry, QuotaStatus } from "../state/quota.js";
 import * as schema from "./schema.js";
 
@@ -142,6 +143,49 @@ export class MysqlPersistence implements Persistence {
           set: { spentMicroUsd: sql`${schema.spend.spentMicroUsd} + ${microUsd}` },
         }),
     );
+  }
+
+  savePin(entry: PinEntry): void {
+    const values = { targetId: entry.targetId, updatedAt: new Date(entry.updatedAt) };
+    this.queue.push(() =>
+      this.db
+        .insert(schema.sessionPins)
+        .values({
+          clientId: entry.clientId,
+          sessionHash: entry.sessionHash,
+          tier: entry.tier,
+          ...values,
+        })
+        .onDuplicateKeyUpdate({ set: values }),
+    );
+  }
+
+  deletePin(clientId: string, sessionHash: string, tier: string): void {
+    this.queue.push(() =>
+      this.db
+        .delete(schema.sessionPins)
+        .where(
+          and(
+            eq(schema.sessionPins.clientId, clientId),
+            eq(schema.sessionPins.sessionHash, sessionHash),
+            eq(schema.sessionPins.tier, tier),
+          ),
+        ),
+    );
+  }
+
+  deletePinsBefore(time: number): void {
+    this.queue.push(() =>
+      this.db.delete(schema.sessionPins).where(lt(schema.sessionPins.updatedAt, new Date(time))),
+    );
+  }
+
+  async loadPins(since: number): Promise<PinEntry[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.sessionPins)
+      .where(gte(schema.sessionPins.updatedAt, new Date(since)));
+    return rows.map((row) => ({ ...row, updatedAt: row.updatedAt.getTime() }));
   }
 
   saveEvent(event: RouterEvent): void {

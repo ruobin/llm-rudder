@@ -175,7 +175,220 @@ export function anthropicErrorStep(
   };
 }
 
-/** A small scriptable server that speaks the OpenAI and Anthropic formats. */
+/** A tool call in the Anthropic stream format. */
+export function anthropicToolStream(
+  model: string,
+  id: string,
+  name: string,
+  input: JsonObject,
+  thinking?: { text: string; signature: string },
+): FakeStep {
+  const json = JSON.stringify(input);
+  const middle = Math.floor(json.length / 2);
+  const offset = thinking ? 1 : 0;
+  return {
+    type: "stream",
+    events: [
+      ...anthropicStreamStart(model),
+      ...(thinking
+        ? [
+            anthropicEvent("content_block_start", {
+              index: 0,
+              content_block: { type: "thinking", thinking: "", signature: "" },
+            }),
+            anthropicEvent("content_block_delta", {
+              index: 0,
+              delta: { type: "thinking_delta", thinking: thinking.text },
+            }),
+            anthropicEvent("content_block_delta", {
+              index: 0,
+              delta: { type: "signature_delta", signature: thinking.signature },
+            }),
+            anthropicEvent("content_block_stop", { index: 0 }),
+          ]
+        : []),
+      anthropicEvent("content_block_start", {
+        index: offset,
+        content_block: { type: "tool_use", id, name, input: {} },
+      }),
+      anthropicEvent("content_block_delta", {
+        index: offset,
+        delta: { type: "input_json_delta", partial_json: json.slice(0, middle) },
+      }),
+      anthropicEvent("content_block_delta", {
+        index: offset,
+        delta: { type: "input_json_delta", partial_json: json.slice(middle) },
+      }),
+      anthropicEvent("content_block_stop", { index: offset }),
+      anthropicEvent("message_delta", {
+        delta: { stop_reason: "tool_use", stop_sequence: null },
+        usage: { output_tokens: ANTHROPIC_USAGE.output_tokens },
+      }),
+      anthropicEvent("message_stop"),
+    ],
+  };
+}
+
+/** A tool call in the Chat Completions stream format. */
+export function chatToolStream(
+  model: string,
+  id: string,
+  name: string,
+  input: JsonObject,
+  extraContent?: JsonObject,
+): FakeStep {
+  const json = JSON.stringify(input);
+  const middle = Math.floor(json.length / 2);
+  return {
+    type: "stream",
+    events: [
+      chunk(model, { role: "assistant", content: "" }),
+      chunk(model, {
+        tool_calls: [
+          {
+            index: 0,
+            id,
+            type: "function",
+            function: { name, arguments: json.slice(0, middle) },
+            ...(extraContent ? { extra_content: extraContent } : {}),
+          },
+        ],
+      }),
+      chunk(model, { tool_calls: [{ index: 0, function: { arguments: json.slice(middle) } }] }),
+      chunk(model, {}, "tool_calls"),
+      usageChunk(model),
+      "data: [DONE]",
+    ],
+  };
+}
+
+const RESPONSES_USAGE = {
+  input_tokens: 100,
+  input_tokens_details: { cached_tokens: 40 },
+  output_tokens: 20,
+  output_tokens_details: { reasoning_tokens: 5 },
+  total_tokens: 120,
+};
+
+const responsesEvent = (type: string, data: JsonObject = {}) =>
+  `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}`;
+
+function responseObject(model: string, status: string, output: JsonObject[] = []): JsonObject {
+  return { id: "resp_fake", object: "response", created_at: 1_800_000_000, model, status, output };
+}
+
+export function responsesBody(model: string, text: string): JsonObject {
+  return {
+    ...responseObject(model, "completed", [
+      {
+        id: "msg_fake",
+        type: "message",
+        role: "assistant",
+        status: "completed",
+        content: [{ type: "output_text", text, annotations: [] }],
+      },
+    ]),
+    usage: RESPONSES_USAGE,
+  };
+}
+
+export function responsesStart(model: string): string[] {
+  const response = responseObject(model, "in_progress");
+  return [
+    responsesEvent("response.created", { response }),
+    responsesEvent("response.in_progress", { response }),
+  ];
+}
+
+export function responsesTextEvents(text: string): string[] {
+  const item = {
+    id: "msg_fake",
+    type: "message",
+    role: "assistant",
+    status: "in_progress",
+    content: [],
+  };
+  const where = { item_id: "msg_fake", output_index: 0, content_index: 0 };
+  const part = { type: "output_text", text, annotations: [] };
+  return [
+    responsesEvent("response.output_item.added", { output_index: 0, item }),
+    responsesEvent("response.content_part.added", {
+      ...where,
+      part: { type: "output_text", text: "", annotations: [] },
+    }),
+    ...text
+      .split(/(?<= )/)
+      .map((delta) => responsesEvent("response.output_text.delta", { ...where, delta })),
+    responsesEvent("response.output_text.done", { ...where, text }),
+    responsesEvent("response.content_part.done", { ...where, part }),
+    responsesEvent("response.output_item.done", {
+      output_index: 0,
+      item: { ...item, status: "completed", content: [part] },
+    }),
+  ];
+}
+
+export function responsesEnd(model: string, output: JsonObject[] = []): string[] {
+  return [
+    responsesEvent("response.completed", {
+      response: { ...responseObject(model, "completed", output), usage: RESPONSES_USAGE },
+    }),
+  ];
+}
+
+export function responsesTextStream(model: string, text: string): FakeStep {
+  return {
+    type: "stream",
+    events: [...responsesStart(model), ...responsesTextEvents(text), ...responsesEnd(model)],
+  };
+}
+
+/** A tool call in the Responses stream format, optionally after a reasoning item. */
+export function responsesToolStream(
+  model: string,
+  callId: string,
+  name: string,
+  input: JsonObject,
+  reasoning?: JsonObject,
+): FakeStep {
+  const json = JSON.stringify(input);
+  const middle = Math.floor(json.length / 2);
+  const index = reasoning ? 1 : 0;
+  const item = { id: "fc_fake", type: "function_call", call_id: callId, name, arguments: "" };
+  const where = { item_id: "fc_fake", output_index: index };
+  return {
+    type: "stream",
+    events: [
+      ...responsesStart(model),
+      ...(reasoning
+        ? [responsesEvent("response.output_item.done", { output_index: 0, item: reasoning })]
+        : []),
+      responsesEvent("response.output_item.added", { output_index: index, item }),
+      responsesEvent("response.function_call_arguments.delta", {
+        ...where,
+        delta: json.slice(0, middle),
+      }),
+      responsesEvent("response.function_call_arguments.delta", {
+        ...where,
+        delta: json.slice(middle),
+      }),
+      responsesEvent("response.function_call_arguments.done", { ...where, arguments: json }),
+      responsesEvent("response.output_item.done", {
+        output_index: index,
+        item: { ...item, arguments: json, status: "completed" },
+      }),
+      ...responsesEnd(model),
+    ],
+  };
+}
+
+export function responsesFailedEvent(code: string, message: string): string {
+  return responsesEvent("response.failed", {
+    response: { ...responseObject("m", "failed"), error: { code, message } },
+  });
+}
+
+/** A small scriptable server that speaks every format the gateway supports. */
 export class FakeUpstream {
   readonly requests: RecordedRequest[] = [];
   /** Responses whose connection closed before they finished. */
@@ -256,6 +469,11 @@ export class FakeUpstream {
       return stream
         ? anthropicTextStream(model, text)
         : { type: "json", body: anthropicMessageBody(model, text) };
+    }
+    if (route === "/v1/responses") {
+      return stream
+        ? responsesTextStream(model, text)
+        : { type: "json", body: responsesBody(model, text) };
     }
     return stream ? textStream(model, text) : { type: "json", body: completionBody(model, text) };
   }

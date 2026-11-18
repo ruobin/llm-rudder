@@ -6,6 +6,7 @@ import { MemoryPersistence, type Persistence } from "./ledger/records.js";
 import { createLogger, createRuntime, restoreState } from "./runtime.js";
 
 const DEFAULT_DRAIN_S = 280;
+const PIN_CLEANUP_MS = 10 * 60_000;
 
 async function main(): Promise<void> {
   const log = createLogger();
@@ -38,6 +39,9 @@ async function main(): Promise<void> {
   await restoreState(runtime);
   const app = buildApp(runtime);
   await app.listen({ host: loaded.config.server.host, port: loaded.config.server.port });
+
+  const pinCleanup = setInterval(() => runtime.pins.prune(), PIN_CLEANUP_MS);
+  pinCleanup.unref();
 
   let stopping = false;
   const shutdown = async (signal: string) => {

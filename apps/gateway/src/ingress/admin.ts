@@ -17,6 +17,7 @@ export function buildStatus(runtime: Runtime) {
     uptimeS: Math.floor((now() - startedAt) / 1000),
     draining,
     pricingVersion: config.pricing.version,
+    pinnedConversations: runtime.pins.size,
     fallbacks: episodes.list().map((episode) => ({ ...episode, since: iso(episode.since) })),
     tiers: [...config.tiers.values()].map((tier) => ({
       name: tier.name,

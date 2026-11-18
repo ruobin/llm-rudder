@@ -4,7 +4,7 @@ export type CostClass = "prepaid" | "free" | "metered";
 export type NoticeMode = "text" | "none";
 export type Trust = "first_party" | "self_hosted" | "third_party";
 /** The request format a client speaks and an upstream accepts. */
-export type Dialect = "openai.chat" | "anthropic.messages";
+export type Dialect = "openai.chat" | "openai.responses" | "anthropic.messages";
 
 export type Outcome =
   | "ok"
@@ -45,6 +45,8 @@ export interface Usage {
   /** Prompt-cache writes, which Anthropic bills above the input price. */
   cacheWrite5mTokens?: number;
   cacheWrite1hTokens?: number;
+  /** The part of the output spent on reasoning, when reported. */
+  reasoningTokens?: number;
 }
 
 export interface Target {
@@ -54,4 +56,6 @@ export interface Target {
   accountId: string;
   model: string;
   params: JsonObject;
+  /** Reasoning effort to use when the client does not ask for one. */
+  effort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 }

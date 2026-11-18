@@ -41,7 +41,7 @@ export function buildEdgePlan(config: Config, client: ClientConfig): EdgePlan {
       const account = config.accounts.get(target.accountId);
       return (
         account?.enabled &&
-        account.api === "anthropic.messages" &&
+        account.kind === "http" &&
         (!client.allowAccounts || client.allowAccounts.has(account.id))
       );
     });

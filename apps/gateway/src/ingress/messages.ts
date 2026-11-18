@@ -100,6 +100,8 @@ async function countTokens(request: FastifyRequest, runtime: Runtime) {
 
   for (const { target } of buildPlan(ctx, runtime).steps) {
     const account = runtime.config.accounts.get(target.accountId)!;
+    // Only Anthropic's format has this endpoint.
+    if (account.api !== "anthropic.messages") continue;
     const body = replaceTopLevelString(ctx.rawBody as Buffer, "model", target.model);
     if (!body) break;
     try {

@@ -41,6 +41,7 @@ const compatOverrides = z
     drop_fields: z.array(z.string()).optional(),
     tool_extras: z.boolean().optional(),
     effort_map: z.record(z.string(), z.string()).optional(),
+    schema_style: z.enum(["standard", "gemini"]).optional(),
   })
   .optional();
 
@@ -48,7 +49,7 @@ const accountSchema = z
   .strictObject({
     /** edge_only accounts are used by llmr-edge and never called from the VPS. */
     kind: z.enum(["http", "edge_only"]).default("http"),
-    api: z.enum(["openai.chat", "anthropic.messages"]).default("openai.chat"),
+    api: z.enum(["openai.chat", "openai.responses", "anthropic.messages"]).default("openai.chat"),
     auth_header: z.enum(["bearer", "x-api-key"]).optional(),
     base_url: z.url().optional(),
     base_url_env: envName.optional(),
@@ -78,6 +79,8 @@ const targetSchema = z.strictObject({
   account: id,
   model: z.string().min(1),
   params: z.record(z.string(), z.unknown()).default({}),
+  /** Reasoning effort to use when the client does not ask for one. */
+  effort: z.enum(["none", "minimal", "low", "medium", "high", "xhigh", "max"]).optional(),
 });
 
 const tierSchema = z.strictObject({
@@ -107,6 +110,8 @@ export const configSchema = z.strictObject({
     .strictObject({
       max_attempts_per_tier: z.number().int().positive().default(3),
       deadline_s: positiveSeconds.default(900),
+      /** Tries targets in the client's own API format first within each tier. */
+      prefer_same_format: z.boolean().default(true),
     })
     .prefault({}),
   timeouts: z
@@ -135,6 +140,7 @@ export const configSchema = z.strictObject({
     })
     .optional(),
   pricing_file: z.string().default("pricing.yaml"),
+  models_file: z.string().default("models.yaml"),
 });
 
 export type RawConfig = z.infer<typeof configSchema>;

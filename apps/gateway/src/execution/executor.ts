@@ -5,18 +5,40 @@ import type { AttemptRecord } from "../ledger/records.js";
 import type { Plan, PlanStep } from "../routing/plan.js";
 import { estimateCost } from "../routing/plan.js";
 import type { Runtime } from "../runtime.js";
-import type { Classified, Outcome, Usage } from "../types.js";
+import type { Classified, Dialect, Outcome, Usage } from "../types.js";
 import { classifyTransportError, type HeaderBag } from "../upstream/classify.js";
 import { SseDecoder, type SseEvent } from "../upstream/sse.js";
 import type { ClientResponse } from "./client-response.js";
 import type { RequestContext } from "./context.js";
 import { canAddNotice, noticeText, reasonLabel } from "./notice.js";
-import { isClassified, type Attempt, type WireProtocol } from "./protocol.js";
+import { openAiChat } from "./protocols/openai-chat.js";
+import { anthropicMessages } from "./protocols/anthropic-messages.js";
+import { openAiResponses } from "./protocols/openai-responses.js";
+import {
+  isClassified,
+  type Attempt,
+  type ClientProtocol,
+  type UpstreamProtocol,
+  type WireProtocol,
+} from "./protocol.js";
+import { translatedProtocol } from "../translate/protocol.js";
 
 const OK: Classified = { outcome: "ok", retryElsewhere: false };
 const MAX_ERROR_BODY_BYTES = 64 * 1024;
+/** A throttle this short is worth waiting out, rather than moving the conversation. */
+const MAX_HOLD_S = 10;
 /** Plan entries that say nothing about whether a target has capacity. */
-const NOT_CAPACITY_REASONS = new Set(["not_allowed", "disabled", "wrong_api"]);
+const NOT_CAPACITY_REASONS = new Set(["not_allowed", "disabled", "capability", "context"]);
+const PASSTHROUGH: Record<Dialect, WireProtocol> = {
+  "openai.chat": openAiChat,
+  "openai.responses": openAiResponses,
+  "anthropic.messages": anthropicMessages,
+};
+
+/** The same format passes through. Any other pair goes through the translator. */
+function upstreamProtocol(client: Dialect, upstream: Dialect): UpstreamProtocol {
+  return client === upstream ? PASSTHROUGH[client] : translatedProtocol(client, upstream);
+}
 
 interface UpstreamFailure {
   status: number;
@@ -64,9 +86,9 @@ export async function executeRequest(
   ctx: RequestContext,
   plan: Plan,
   out: ClientResponse,
-  protocol: WireProtocol,
+  client: ClientProtocol,
 ): Promise<void> {
-  await new RequestRun(runtime, ctx, plan, out, protocol).run();
+  await new RequestRun(runtime, ctx, plan, out, client).run();
 }
 
 class RequestRun {
@@ -81,7 +103,7 @@ class RequestRun {
     private readonly ctx: RequestContext,
     private readonly plan: Plan,
     private readonly out: ClientResponse,
-    private readonly protocol: WireProtocol,
+    private readonly client: ClientProtocol,
   ) {
     this.reasons = [
       ...(ctx.priorFailures ?? []),
@@ -114,7 +136,9 @@ class RequestRun {
 
   private async tryTargets(): Promise<void> {
     const { ctx, rt, plan } = this;
-    for (const step of plan.steps) {
+    let held = false;
+    for (let index = 0; index < plan.steps.length; index += 1) {
+      const step = plan.steps[index] as PlanStep;
       if (ctx.signal.aborted) {
         this.finalOutcome = "client_aborted";
         return;
@@ -136,9 +160,10 @@ class RequestRun {
 
       const startedAt = rt.now();
       const attempt: Attempt = { rt, ctx, target, account };
+      const upstream = upstreamProtocol(ctx.dialect, account.api);
       const result = ctx.stream
-        ? await this.streamAttempt(step, attempt, startedAt)
-        : await this.jsonAttempt(step, attempt, startedAt);
+        ? await this.streamAttempt(step, attempt, upstream, startedAt)
+        : await this.jsonAttempt(step, attempt, upstream, startedAt);
 
       const costs = this.costs(step, account, result);
       if (result.delivered) rt.budgets.settle(hold, costs.chargeMicroUsd);
@@ -170,6 +195,21 @@ class RequestRun {
       });
 
       const outcome = result.classified.outcome;
+      const waitS = result.classified.retryAfterS;
+      if (
+        !held &&
+        !result.delivered &&
+        outcome === "rate_limited" &&
+        target.id === plan.pinnedTargetId &&
+        waitS !== undefined &&
+        waitS <= MAX_HOLD_S &&
+        rt.now() + waitS * 1000 < ctx.deadlineAt
+      ) {
+        held = true;
+        await this.hold(waitS);
+        index -= 1;
+        continue;
+      }
       if (outcome === "ok") {
         rt.quota.recordSuccess(target);
       } else if (outcome === "client_aborted") {
@@ -183,6 +223,15 @@ class RequestRun {
         this.finalOutcome = outcome;
         this.finalStatus = 200;
         this.warnAboutMeteredFailover(step, account);
+        if (outcome === "ok" && plan.requestedTier !== null) {
+          rt.pins.set(
+            ctx.client.id,
+            ctx.sessionKey,
+            plan.requestedTier,
+            target.id,
+            plan.pinAtStart,
+          );
+        }
         return;
       }
 
@@ -190,12 +239,26 @@ class RequestRun {
       this.finalStatus = result.httpStatus;
       if (outcome === "client_aborted") return;
       if (!result.classified.retryElsewhere) {
-        await this.sendClientError(result);
+        await this.sendClientError(result, upstream);
         return;
       }
       this.reasons.push(`${target.accountId}:${outcome}`);
     }
     await this.sendAllFailed();
+  }
+
+  /** Waits, ending early if the client goes away. */
+  private hold(seconds: number): Promise<void> {
+    const { signal } = this.ctx;
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", done);
+        resolve();
+      };
+      const timer = setTimeout(done, seconds * 1000);
+      signal.addEventListener("abort", done, { once: true });
+    });
   }
 
   private costs(step: PlanStep, account: AccountConfig, result: AttemptResult) {
@@ -230,7 +293,7 @@ class RequestRun {
 
   /** Runs once, when a target is about to deliver output. Returns a note if one is due. */
   private onServed(step: PlanStep): string | null {
-    const { rt, ctx, plan, out, protocol } = this;
+    const { rt, ctx, plan, out, client } = this;
     const { target } = step;
     out.setHeaders({
       "x-llmr-request-id": ctx.requestId,
@@ -252,7 +315,7 @@ class RequestRun {
     const reason = reasonLabel(this.reasons);
     rt.episodes.onFallback(plan.requestedTier, target.tier, reason);
     if (
-      protocol.supportsNotice &&
+      client.supportsNotice &&
       canAddNotice(ctx) &&
       rt.episodes.takeNotice(plan.requestedTier, ctx.client.id, ctx.sessionKey)
     ) {
@@ -300,9 +363,10 @@ class RequestRun {
   private async jsonAttempt(
     step: PlanStep,
     attempt: Attempt,
+    protocol: UpstreamProtocol,
     startedAt: number,
   ): Promise<AttemptResult> {
-    const { rt, ctx, out, protocol } = this;
+    const { rt, ctx, out } = this;
     const result = this.newResult();
     const controller = new AbortController();
     const unlink = this.linkAbort(controller);
@@ -353,9 +417,10 @@ class RequestRun {
   private async streamAttempt(
     step: PlanStep,
     attempt: Attempt,
+    protocol: UpstreamProtocol,
     startedAt: number,
   ): Promise<AttemptResult> {
-    const { rt, ctx, out, protocol } = this;
+    const { rt, ctx, out } = this;
     const { commitMs, streamIdleMs } = rt.config.timeouts;
     const result = this.newResult();
     const controller = new AbortController();
@@ -439,7 +504,8 @@ class RequestRun {
           }
           break;
       }
-      if (!(await out.write(`${event.raw}\n\n`))) {
+      const text = next.kind === "output" && next.text ? next.text() : `${event.raw}\n\n`;
+      if (text !== "" && !(await out.write(text))) {
         controller.abort(new AbortReason("client"));
         return false;
       }
@@ -539,9 +605,9 @@ class RequestRun {
     }
   }
 
-  private async sendClientError(attempt: AttemptResult): Promise<void> {
+  private async sendClientError(attempt: AttemptResult, protocol: UpstreamProtocol): Promise<void> {
     const { classified: result, httpStatus, failure } = attempt;
-    const { out, protocol, ctx } = this;
+    const { out, ctx, client } = this;
     const status = result.clientStatus ?? httpStatus ?? 400;
     this.finalStatus = status;
     const requestHeader = { "x-llmr-request-id": ctx.requestId };
@@ -557,18 +623,19 @@ class RequestRun {
     }
 
     const type = result.outcome === "refusal" ? "content_policy_error" : "invalid_request_error";
+    const rejection = client.describeRejection?.(result);
     await out.sendError(
       status,
-      result.message || "The upstream rejected the request.",
+      rejection?.message ?? (result.message || "The upstream rejected the request."),
       type,
       result.code ?? null,
       result.outcome === "context_overflow" ? "messages" : null,
-      requestHeader,
+      { ...requestHeader, ...rejection?.headers },
     );
   }
 
   private async sendAllFailed(): Promise<void> {
-    const { rt, plan, ctx, out, protocol } = this;
+    const { rt, plan, ctx, out, client } = this;
     const failedForCapacity = this.attempts.every((attempt) =>
       ["quota_exhausted", "billing", "rate_limited"].includes(attempt.outcome),
     );
@@ -597,7 +664,7 @@ class RequestRun {
       const retryAfter = Math.max(1, Math.ceil((earliest - rt.now()) / 1000));
       headers["retry-after"] = String(retryAfter);
       this.finalOutcome = this.attempts.length > 0 ? this.finalOutcome : "quota_exhausted";
-      const failure = protocol.allFailed(outcomes, true);
+      const failure = client.allFailed(outcomes, true);
       this.finalStatus = failure.status;
       await out.sendError(
         failure.status,
@@ -609,7 +676,7 @@ class RequestRun {
       );
       return;
     }
-    const failure = protocol.allFailed(outcomes, false);
+    const failure = client.allFailed(outcomes, false);
     this.finalStatus = failure.status;
     await out.sendError(
       failure.status,

@@ -11,6 +11,8 @@ export interface CompatProfile {
   toolExtras: boolean;
   /** Replacements for reasoning_effort values. */
   effortMap: Record<string, string>;
+  /** Which JSON Schema keywords tool definitions may use. */
+  schemaStyle: "standard" | "gemini";
 }
 
 const standard: CompatProfile = {
@@ -20,6 +22,7 @@ const standard: CompatProfile = {
   dropFields: [],
   toolExtras: false,
   effortMap: {},
+  schemaStyle: "standard",
 };
 
 export const COMPAT_PROFILES = {
@@ -33,7 +36,8 @@ export const COMPAT_PROFILES = {
     systemRole: "system",
     dropFields: ["store", "metadata", "prompt_cache_key", "prompt_cache_retention", "user"],
     toolExtras: true,
-    effortMap: { none: "low", minimal: "low", xhigh: "high" },
+    effortMap: { none: "low", minimal: "low", xhigh: "high", max: "high" },
+    schemaStyle: "gemini",
   },
 } satisfies Record<string, CompatProfile>;
 

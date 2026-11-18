@@ -34,6 +34,23 @@ export const ANTHROPIC_ERRORS: ErrorFormat = {
     `event: error\ndata: ${JSON.stringify(anthropicErrorBody(status, message))}\n\n`,
 };
 
+export const RESPONSES_ERRORS: ErrorFormat = {
+  json: OPENAI_ERRORS.json,
+  streamEnd(_status, message, type, code) {
+    const event = {
+      type: "response.failed",
+      response: {
+        id: "resp_failed",
+        object: "response",
+        status: "failed",
+        error: { code: code ?? type, message },
+        output: [],
+      },
+    };
+    return `event: response.failed\ndata: ${JSON.stringify(event)}\n\n`;
+  },
+};
+
 /** Writes to the client as either one JSON response or an event stream. */
 export class ClientResponse {
   private readonly raw: ServerResponse;

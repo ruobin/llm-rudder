@@ -2,6 +2,7 @@ import { costMicroUsd, estimateUsage, priceFor } from "../billing/pricing.js";
 import type { RequestContext } from "../execution/context.js";
 import type { Runtime } from "../runtime.js";
 import type { Target } from "../types.js";
+import { whyUnsuitable } from "./capabilities.js";
 import { resolveModel } from "./resolve.js";
 
 export interface PlanStep {
@@ -21,6 +22,10 @@ export interface Plan {
   requestedTier: string | null;
   steps: PlanStep[];
   skipped: SkippedTarget[];
+  /** The conversation's pinned target when the request arrived. */
+  pinAtStart: string | null;
+  /** Set when the first step is that pinned target. */
+  pinnedTargetId: string | null;
 }
 
 function uniqueByAccountModel(targets: Target[]): Target[] {
@@ -45,7 +50,8 @@ function whyBlocked(
 ): Omit<SkippedTarget, "target"> | null {
   const account = rt.config.accounts.get(target.accountId);
   if (!account?.enabled || account.kind !== "http") return { reason: "disabled" };
-  if (account.api !== ctx.dialect) return { reason: "wrong_api" };
+  const unsuitable = whyUnsuitable(target, account, ctx, rt);
+  if (unsuitable) return { reason: unsuitable };
   if (ctx.client.allowAccounts && !ctx.client.allowAccounts.has(target.accountId)) {
     return { reason: "not_allowed" };
   }
@@ -68,20 +74,62 @@ function whyBlocked(
   return null;
 }
 
+/**
+ * Keeps a conversation on its current target, unless a better one has recovered:
+ * the tier it asked for, or a prepaid target ahead of a metered one.
+ */
+function applyPin(plan: Plan, ctx: RequestContext, rt: Runtime): Plan {
+  const tier = plan.requestedTier;
+  if (tier === null) return plan;
+  const clientId = ctx.client.id;
+  const pin = rt.pins.get(clientId, ctx.sessionKey, tier);
+  if (pin === null) return plan;
+  plan.pinAtStart = pin;
+
+  const index = plan.steps.findIndex((step) => step.target.id === pin);
+  if (index === -1) return plan;
+  const pinned = plan.steps[index]!;
+  const first = plan.steps[0]!;
+  if (index > 0) {
+    const costClass = (step: PlanStep) => rt.config.accounts.get(step.target.accountId)?.costClass;
+    const requestedTierIsBack = pinned.isFallback && !first.isFallback;
+    const prepaidIsBack = costClass(pinned) === "metered" && costClass(first) !== "metered";
+    if (requestedTierIsBack || prepaidIsBack) {
+      rt.pins.release(clientId, ctx.sessionKey, tier);
+      plan.pinAtStart = null;
+      return plan;
+    }
+    plan.steps.splice(index, 1);
+    plan.steps.unshift(pinned);
+  }
+  plan.pinnedTargetId = pin;
+  return plan;
+}
+
 /** Expands a request into the ordered targets to try. */
 export function buildPlan(ctx: RequestContext, rt: Runtime): Plan {
   const { config } = rt;
   const resolution = resolveModel(ctx.requestedModel, ctx.tierHeader, config);
 
+  // A target in the client's own format needs no translation, which keeps prompt
+  // caching and reasoning intact, so it goes first within its tier.
+  const sameFormatFirst = (targets: Target[]): Target[] => {
+    if (!config.routing.preferSameFormat) return targets;
+    const isSame = (target: Target) => config.accounts.get(target.accountId)?.api === ctx.dialect;
+    return [...targets.filter(isSame), ...targets.filter((target) => !isSame(target))];
+  };
+
   let requestedTier: string | null = null;
   let ordered: Target[];
   if (resolution.kind === "model") {
-    ordered = resolution.targets;
+    ordered = sameFormatFirst(resolution.targets);
   } else {
     requestedTier = ctx.originalTier ?? resolution.tier;
     const tier = config.tiers.get(resolution.tier)!;
     const chain = ctx.allowFallback ? [tier.name, ...tier.fallbackTiers] : [tier.name];
-    const all = uniqueByAccountModel(chain.flatMap((name) => config.tiers.get(name)!.targets));
+    const all = uniqueByAccountModel(
+      chain.flatMap((name) => sameFormatFirst(config.tiers.get(name)!.targets)),
+    );
     const isMetered = (target: Target) =>
       config.accounts.get(target.accountId)?.costClass === "metered";
     ordered =
@@ -107,5 +155,9 @@ export function buildPlan(ctx: RequestContext, rt: Runtime): Plan {
       isFallback: requestedTier !== null && target.tier !== requestedTier,
     });
   }
-  return { requestedTier, steps, skipped };
+  return applyPin(
+    { requestedTier, steps, skipped, pinAtStart: null, pinnedTargetId: null },
+    ctx,
+    rt,
+  );
 }

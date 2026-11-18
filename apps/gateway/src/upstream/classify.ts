@@ -16,12 +16,16 @@ const REFUSAL_CODES = new Set([
 
 const QUOTA_CODES = new Set([
   "billing_hard_limit_reached",
+  "credit_balance_exhausted",
   "insufficient_balance",
   "insufficient_credits",
   "insufficient_quota",
   "insufficient_user_quota",
+  "organization_spend_limit_exceeded",
+  "organization_usage_limit_exceeded",
   "payment_required",
   "pre_consume_token_quota_failed",
+  "project_spend_limit_exceeded",
 ]);
 
 const NO_ROUTE_CODES = new Set([

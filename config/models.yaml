@@ -1,0 +1,88 @@
+# What each model accepts. The gateway uses this to skip targets that cannot serve
+# a request and to shape translated requests. The first matching entry wins.
+# Models not listed here are assumed to accept everything.
+version: "2026-11-18"
+
+default: {}
+
+models:
+  # Anthropic
+  - match: "claude-fable-5-*"
+    context_window: 1000000
+    max_output_tokens: 128000
+    sampling: false
+    forced_tool_choice: false
+    prefill: false
+    system_messages: true
+    adaptive_thinking: true
+    efforts: [low, medium, high, xhigh, max]
+  - match: "claude-opus-5-5"
+    context_window: 1000000
+    max_output_tokens: 128000
+    sampling: false
+    forced_tool_choice: false
+    prefill: false
+    system_messages: true
+    adaptive_thinking: true
+    efforts: [low, medium, high, xhigh, max]
+  - match: "claude-sonnet-5-5"
+    context_window: 1000000
+    max_output_tokens: 128000
+    sampling: false
+    forced_tool_choice: false
+    prefill: false
+    system_messages: true
+    adaptive_thinking: true
+    efforts: [low, medium, high, xhigh, max]
+  - match: "claude-haiku-5-5"
+    context_window: 1000000
+    max_output_tokens: 128000
+    sampling: false
+    prefill: false
+    system_messages: true
+    adaptive_thinking: true
+    efforts: [low, medium, high, xhigh, max]
+
+  # OpenAI. These models call tools only through the Responses API.
+  - match: "gpt-6.2-*"
+    context_window: 922000
+    max_output_tokens: 128000
+    tools_on: [openai.responses]
+    sampling: false
+    efforts: [low, medium, high, xhigh, max]
+  - match: "gpt-6-astra"
+    context_window: 922000
+    max_output_tokens: 128000
+    tools_on: [openai.responses]
+    sampling: false
+    efforts: [low, medium, high, xhigh, max]
+  - match: "gpt-6*-sol"
+    context_window: 922000
+    max_output_tokens: 128000
+    tools_on: [openai.responses]
+    sampling: false
+    efforts: [low, medium, high, xhigh, max]
+  - match: "gpt-6*"
+    context_window: 922000
+    max_output_tokens: 128000
+    tools_on: [openai.responses]
+    sampling: false
+    efforts: [none, low, medium, high, xhigh, max]
+
+  # Google, through its OpenAI-compatible endpoint
+  - match: "gemini-4-hydrogen"
+    context_window: 1048576
+    max_output_tokens: 65536
+    efforts: [low, medium, high, xhigh]
+  - match: "gemini-4-*"
+    context_window: 1048576
+    max_output_tokens: 64000
+    efforts: [low, medium, high]
+  - match: "gemini-3.8-flash"
+    context_window: 1048576
+    max_output_tokens: 65536
+    efforts: [low, medium, high]
+  - match: "gemini-3.5-flash-lite"
+    context_window: 1048576
+    max_output_tokens: 65536
+    efforts: [low, medium, high]

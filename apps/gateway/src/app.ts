@@ -5,6 +5,7 @@ import { registerAdminRoutes } from "./ingress/admin.js";
 import { registerChatRoutes } from "./ingress/chat.js";
 import { registerEdgeRoutes } from "./ingress/edge.js";
 import { registerMessagesRoutes } from "./ingress/messages.js";
+import { registerResponsesRoutes } from "./ingress/responses.js";
 import type { Runtime } from "./runtime.js";
 
 export function buildApp(runtime: Runtime): FastifyInstance {
@@ -72,6 +73,7 @@ export function buildApp(runtime: Runtime): FastifyInstance {
   app.decorateRequest("llmrClient", null);
   registerChatRoutes(app, runtime);
   registerMessagesRoutes(app, runtime);
+  registerResponsesRoutes(app, runtime);
   registerEdgeRoutes(app, runtime);
   registerAdminRoutes(app, runtime);
   return app;

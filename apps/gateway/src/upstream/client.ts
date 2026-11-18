@@ -21,6 +21,12 @@ export interface AnthropicRequest {
   signal: AbortSignal;
 }
 
+export interface ResponsesRequest {
+  body: Buffer;
+  stream: boolean;
+  signal: AbortSignal;
+}
+
 export interface UpstreamClient {
   sendChat(
     account: AccountConfig,
@@ -28,6 +34,7 @@ export interface UpstreamClient {
     options: { stream: boolean; signal: AbortSignal },
   ): Promise<UpstreamResponse>;
   sendAnthropic(account: AccountConfig, request: AnthropicRequest): Promise<UpstreamResponse>;
+  sendResponses(account: AccountConfig, request: ResponsesRequest): Promise<UpstreamResponse>;
   close(): Promise<void>;
 }
 
@@ -67,6 +74,33 @@ export class HttpUpstreamClient implements UpstreamClient {
       dispatcher: this.agent,
       headersTimeout: this.config.timeouts.firstByteMs,
       // The executor applies its own commit and idle timers.
+      bodyTimeout: 0,
+    });
+    return {
+      status: response.statusCode,
+      headers: response.headers,
+      body: response.body as unknown as UpstreamResponse["body"],
+    };
+  }
+
+  async sendResponses(
+    account: AccountConfig,
+    request: ResponsesRequest,
+  ): Promise<UpstreamResponse> {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+      accept: request.stream ? "text/event-stream" : "application/json",
+      "user-agent": "llm-router/0.1",
+      "x-llmr-hop": this.instanceId,
+    };
+    if (account.apiKey) headers.authorization = `Bearer ${account.apiKey}`;
+    const response = await request_(`${account.baseUrl}/responses`, {
+      method: "POST",
+      headers,
+      body: request.body,
+      signal: request.signal,
+      dispatcher: this.agent,
+      headersTimeout: this.config.timeouts.firstByteMs,
       bodyTimeout: 0,
     });
     return {

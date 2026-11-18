@@ -21,6 +21,29 @@ describe.skipIf(!url)("MySQL persistence", () => {
     await persistence.close();
   });
 
+  it("stores, updates, loads and removes session pins", async () => {
+    const entry = {
+      clientId: accountId,
+      sessionHash: "0123456789abcdef",
+      tier: "frontier",
+      targetId: "frontier/a/one",
+      updatedAt: Date.parse("2030-01-02T03:04:05.678Z"),
+    };
+    persistence.savePin(entry);
+    persistence.savePin({ ...entry, targetId: "frontier/b/two" });
+    await persistence.flush();
+    const mine = async () =>
+      (await persistence.loadPins(entry.updatedAt - 1000)).filter((p) => p.clientId === accountId);
+    expect(await mine()).toEqual([{ ...entry, targetId: "frontier/b/two" }]);
+
+    persistence.deletePinsBefore(entry.updatedAt);
+    await persistence.flush();
+    expect(await mine()).toHaveLength(1);
+    persistence.deletePin(entry.clientId, entry.sessionHash, entry.tier);
+    await persistence.flush();
+    expect(await mine()).toHaveLength(0);
+  });
+
   it("answers a health check", async () => {
     await expect(persistence.ping()).resolves.toBeUndefined();
   });

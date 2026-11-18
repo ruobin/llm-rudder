@@ -101,6 +101,14 @@ class MessagesStreamReader implements StreamReader {
 export const anthropicMessages: WireProtocol = {
   supportsNotice: false,
 
+  // Claude Code compacts its conversation when it sees this wording.
+  describeRejection: (result) => ({
+    ...(result.outcome === "context_overflow"
+      ? { message: "prompt is too long for the model that served this request" }
+      : {}),
+    headers: { "x-llmr-upstream-error": "1" },
+  }),
+
   send({ rt, ctx, target, account }, { stream, signal }) {
     // Only the model may change, so prompt caching and signatures keep working.
     const body = replaceTopLevelString(ctx.rawBody as Buffer, "model", target.model);

@@ -1,5 +1,6 @@
 import type { SpendPersistence, SpendRow } from "../billing/budgets.js";
 import type { EventPersistence, RouterEvent } from "../notify/notifier.js";
+import type { PinEntry, PinPersistence } from "../routing/pins.js";
 import type { QuotaEntry, QuotaPersistence } from "../state/quota.js";
 import type { Outcome } from "../types.js";
 
@@ -47,7 +48,8 @@ export interface LedgerEntry {
 }
 
 /** Storage used by the router. Write methods must never throw or block. */
-export interface Persistence extends QuotaPersistence, SpendPersistence, EventPersistence {
+export interface Persistence
+  extends QuotaPersistence, SpendPersistence, EventPersistence, PinPersistence {
   loadQuota(): Promise<QuotaEntry[]>;
   loadSpend(periods: string[]): Promise<SpendRow[]>;
   saveLedger(entry: LedgerEntry): void;
@@ -62,6 +64,7 @@ export class MemoryPersistence implements Persistence {
   readonly spend = new Map<string, number>();
   readonly ledger: LedgerEntry[] = [];
   readonly events: RouterEvent[] = [];
+  readonly pins = new Map<string, PinEntry>();
 
   async loadQuota(): Promise<QuotaEntry[]> {
     return [...this.quota.values()];
@@ -87,6 +90,24 @@ export class MemoryPersistence implements Persistence {
   addSpend(accountId: string, period: string, microUsd: number): void {
     const key = `${accountId}|${period}`;
     this.spend.set(key, (this.spend.get(key) ?? 0) + microUsd);
+  }
+
+  savePin(entry: PinEntry): void {
+    this.pins.set(`${entry.clientId}\u0000${entry.sessionHash}\u0000${entry.tier}`, entry);
+  }
+
+  deletePin(clientId: string, sessionHash: string, tier: string): void {
+    this.pins.delete(`${clientId}\u0000${sessionHash}\u0000${tier}`);
+  }
+
+  deletePinsBefore(time: number): void {
+    for (const [key, entry] of this.pins) {
+      if (entry.updatedAt < time) this.pins.delete(key);
+    }
+  }
+
+  async loadPins(since: number): Promise<PinEntry[]> {
+    return [...this.pins.values()].filter((entry) => entry.updatedAt >= since);
   }
 
   saveEvent(event: RouterEvent): void {

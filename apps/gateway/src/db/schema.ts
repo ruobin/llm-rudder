@@ -89,6 +89,21 @@ export const quotaState = mysqlTable(
   (table) => [primaryKey({ columns: [table.accountId, table.scope] })],
 );
 
+export const sessionPins = mysqlTable(
+  "session_pins",
+  {
+    clientId: varchar("client_id", { length: 64 }).notNull(),
+    sessionHash: char("session_hash", { length: 16 }).notNull(),
+    tier: varchar("tier", { length: 64 }).notNull(),
+    targetId: varchar("target_id", { length: 255 }).notNull(),
+    updatedAt: time("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.clientId, table.sessionHash, table.tier] }),
+    index("session_pins_updated").on(table.updatedAt),
+  ],
+);
+
 export const events = mysqlTable(
   "events",
   {

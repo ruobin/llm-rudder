@@ -394,7 +394,7 @@ describe("POST /v1/messages", () => {
     expect(JSON.parse(large.body)).toMatchObject({ error: { type: "request_too_large" } });
   });
 
-  it("keeps the two API formats on their own accounts", async () => {
+  it("tries accounts in the client's own format first", async () => {
     await send(request());
     expect(gateway.upstream.requests.at(-1)?.path).toBe("/v1/messages");
 
@@ -612,18 +612,17 @@ describe("edge endpoints", () => {
     ]);
   });
 
-  it("leaves out gateway steps for tiers with no Anthropic account", async () => {
+  it("leaves out gateway steps for tiers with no usable account", async () => {
     await sendWithConfig(
       CLAUDE_CONFIG.replace(
-        "      - { account: anthropic-key, model: claude-sonnet-5-5 }\n",
-        "      - { account: openai-key, model: gpt-medium }\n",
+        "edge: true, allow_accounts: [anthropic-key, backup] }",
+        "edge: true, allow_accounts: [backup] }",
       ),
     );
     const plan = await readJson(await getPlan());
     expect(plan.routes[1].steps).toEqual([
       { kind: "plan" },
       { kind: "plan", model: "claude-haiku-5-5" },
-      { kind: "gateway", tier: "flash" },
     ]);
   });
 
@@ -719,7 +718,7 @@ describe("configuration", () => {
       "account: backup, model: backup-opus",
       "account: backup, model: backup-opus, params: { temperature: 1 }",
     );
-    expect(problems(yaml).join()).toContain("params are not supported");
+    expect(problems(yaml).join()).toContain("params only apply");
   });
 
   it("checks the edge section", () => {

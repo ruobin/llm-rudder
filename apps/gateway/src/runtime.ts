@@ -7,6 +7,8 @@ import { MemoryPersistence, type Persistence } from "./ledger/records.js";
 import { FallbackEpisodes } from "./notify/episodes.js";
 import { Notifier, ntfySink, webhookSink, type EventSink } from "./notify/notifier.js";
 import { QuotaManager } from "./state/quota.js";
+import { PIN_IDLE_MS, PinStore } from "./routing/pins.js";
+import { ReasoningStore } from "./translate/artifacts.js";
 import { HttpUpstreamClient, type UpstreamClient } from "./upstream/client.js";
 import { ToolExtrasStore } from "./upstream/tool-extras.js";
 
@@ -21,6 +23,8 @@ export interface Runtime {
   notifier: Notifier;
   episodes: FallbackEpisodes;
   toolExtras: ToolExtrasStore;
+  reasoning: ReasoningStore;
+  pins: PinStore;
   upstream: UpstreamClient;
   persistence: Persistence;
   limits: ClientLimits;
@@ -107,6 +111,8 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
     notifier,
     episodes: new FallbackEpisodes(notifier, now),
     toolExtras: new ToolExtrasStore(now),
+    reasoning: new ReasoningStore(now),
+    pins: new PinStore(now, persistence),
     upstream: options.upstream ?? new HttpUpstreamClient(config, instanceId),
     persistence,
     limits: new ClientLimits(now),
@@ -120,10 +126,12 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
 /** Loads saved quota state and this period's spend. */
 export async function restoreState(runtime: Runtime): Promise<void> {
   const now = runtime.now();
-  const [quota, spend] = await Promise.all([
+  const [quota, spend, pins] = await Promise.all([
     runtime.persistence.loadQuota(),
     runtime.persistence.loadSpend([dayPeriod(now), monthPeriod(now)]),
+    runtime.persistence.loadPins(now - PIN_IDLE_MS),
   ]);
   runtime.quota.load(quota);
   runtime.budgets.load(spend);
+  runtime.pins.load(pins);
 }

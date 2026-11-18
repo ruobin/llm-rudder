@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { pino } from "pino";
 import { buildApp } from "../src/app.js";
@@ -53,7 +54,7 @@ server: { host: 127.0.0.1, port: 0, max_body_mb: 1 }
 admin: { key_env: ADMIN_KEY }
 clients:
   - { id: chat, key_env: CHAT_KEY, notice: text }
-  - { id: claude-code, key_env: CLAUDE_KEY, edge: true }
+  - { id: claude-code, key_env: CLAUDE_KEY, edge: true, allow_accounts: [anthropic-key, backup] }
 accounts:
   anthropic-key: { api: anthropic.messages, base_url_env: UPSTREAM_URL, api_key_env: ANTHROPIC_KEY, cost_class: metered, trust: first_party, budget: { daily_usd: 5 } }
   backup: { api: anthropic.messages, auth_header: bearer, base_url_env: UPSTREAM_URL, api_key_env: BACKUP_KEY, cost_class: prepaid, trust: self_hosted }
@@ -85,6 +86,43 @@ edge:
 timeouts: { keepalive_after_s: 30, keepalive_interval_s: 15 }
 `;
 
+/** One tier for each way of reaching a model, for testing translation. */
+export const TRANSLATION_CONFIG = `
+version: 1
+server: { host: 127.0.0.1, port: 0, max_body_mb: 1 }
+admin: { key_env: ADMIN_KEY }
+clients:
+  - { id: chat, key_env: CHAT_KEY, notice: text }
+  - { id: script, key_env: SCRIPT_KEY }
+  - { id: claude-code, key_env: CLAUDE_KEY, edge: true }
+accounts:
+  anthropic-key: { api: anthropic.messages, base_url_env: UPSTREAM_URL, api_key_env: ANTHROPIC_KEY, cost_class: metered, trust: first_party, budget: { daily_usd: 5 } }
+  other-claude: { api: anthropic.messages, base_url_env: UPSTREAM_URL, api_key_env: BACKUP_KEY, cost_class: prepaid, trust: third_party }
+  openai-key: { api: openai.responses, base_url_env: UPSTREAM_URL, api_key_env: OPENAI_KEY, compat: openai, cost_class: metered, trust: first_party }
+  gateway-a: { base_url_env: UPSTREAM_URL, api_key_env: GATEWAY_KEY, compat: new_api, cost_class: prepaid, trust: self_hosted }
+  gemini-key: { base_url_env: UPSTREAM_URL, api_key_env: GEMINI_KEY, compat: gemini, cost_class: metered, trust: first_party }
+  claude-plan: { kind: edge_only, cost_class: prepaid, trust: first_party }
+tiers:
+  claude: { targets: [{ account: anthropic-key, model: claude-opus-5-5 }] }
+  relay-claude: { targets: [{ account: other-claude, model: claude-sonnet-5-5 }] }
+  gpt: { targets: [{ account: openai-key, model: gpt-6.2-astra, effort: high }] }
+  chatgw: { targets: [{ account: gateway-a, model: gw-model }] }
+  gemini: { targets: [{ account: gemini-key, model: gemini-4-hydrogen }] }
+  frontier:
+    targets:
+      - { account: anthropic-key, model: claude-opus-5-5 }
+      - { account: openai-key, model: gpt-6.2-astra }
+      - { account: gemini-key, model: gemini-4-hydrogen }
+aliases:
+  - { match: "claude-opus-*", tier: frontier }
+edge:
+  plan_account: claude-plan
+  plan_models: { frontier: claude-opus-5-5 }
+timeouts: { keepalive_after_s: 30, keepalive_interval_s: 15 }
+`;
+
+export const MODELS = readFileSync(new URL("../../../config/models.yaml", import.meta.url), "utf8");
+
 export const PRICING = `
 version: test
 default: { input: 10, output: 50 }
@@ -110,6 +148,7 @@ export interface TestGateway {
 
 export interface GatewayOptions {
   yaml?: string;
+  models?: string;
   upstream?: FakeUpstream;
   persistence?: Persistence;
   now?: () => number;
@@ -117,19 +156,24 @@ export interface GatewayOptions {
 
 export async function startGateway(options: GatewayOptions = {}): Promise<TestGateway> {
   const upstream = options.upstream ?? (await new FakeUpstream().start());
-  const { config } = parseConfig(options.yaml ?? BASE_CONFIG, PRICING, {
-    ADMIN_KEY,
-    CHAT_KEY,
-    SCRIPT_KEY,
-    LIMITED_KEY,
-    CLAUDE_KEY,
-    ANTHROPIC_KEY: ANTHROPIC_UPSTREAM_KEY,
-    BACKUP_KEY: BACKUP_UPSTREAM_KEY,
-    UPSTREAM_URL: upstream.url,
-    GATEWAY_KEY: "upstream-gateway-key",
-    OPENAI_KEY: "upstream-openai-key",
-    GEMINI_KEY: "upstream-gemini-key",
-  });
+  const { config } = parseConfig(
+    options.yaml ?? BASE_CONFIG,
+    PRICING,
+    {
+      ADMIN_KEY,
+      CHAT_KEY,
+      SCRIPT_KEY,
+      LIMITED_KEY,
+      CLAUDE_KEY,
+      ANTHROPIC_KEY: ANTHROPIC_UPSTREAM_KEY,
+      BACKUP_KEY: BACKUP_UPSTREAM_KEY,
+      UPSTREAM_URL: upstream.url,
+      GATEWAY_KEY: "upstream-gateway-key",
+      OPENAI_KEY: "upstream-openai-key",
+      GEMINI_KEY: "upstream-gemini-key",
+    },
+    options.models,
+  );
   const events: RouterEvent[] = [];
   const persistence = options.persistence ?? new MemoryPersistence();
   const runtime = createRuntime(config, {

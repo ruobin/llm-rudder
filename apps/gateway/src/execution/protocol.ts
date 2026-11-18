@@ -30,8 +30,11 @@ export type StreamStep =
   | { kind: "failed"; cause: Classified }
   /** Not output yet. Forwarded once the stream is committed. */
   | { kind: "pending"; keepUntilCommit: boolean }
-  /** Model output. This is the commit point. `last` stops reading afterwards. */
-  | { kind: "output"; last?: boolean };
+  /**
+   * Model output. This is the commit point. `last` stops reading afterwards.
+   * `text` replaces the event, and is rendered once the commit has happened.
+   */
+  | { kind: "output"; last?: boolean; text?: () => string };
 
 export interface StreamReader {
   readonly usage: Usage | null;
@@ -54,9 +57,26 @@ export interface ForwardedError {
   headers: Record<string, string>;
 }
 
-/** Everything that differs between the API formats the gateway serves. */
-export interface WireProtocol {
+/** How the gateway talks to the client, whichever upstream answers. */
+export interface ClientProtocol {
   readonly supportsNotice: boolean;
+  /** Adapts an upstream's rejection of the request for this kind of client. */
+  describeRejection?(result: Classified): {
+    message?: string;
+    headers: Record<string, string>;
+  };
+  /** Status and headers for "every target failed". */
+  allFailed(
+    outcomes: Outcome[],
+    capacity: boolean,
+  ): {
+    status: number;
+    headers: Record<string, string>;
+  };
+}
+
+/** How one attempt talks to its upstream and reads the answer. */
+export interface UpstreamProtocol {
   send(
     attempt: Attempt,
     options: { stream: boolean; signal: AbortSignal },
@@ -68,14 +88,9 @@ export interface WireProtocol {
   successHeaders(headers: HeaderBag): Record<string, string>;
   /** An upstream error to return unchanged, when this format calls for that. */
   forwardedError(status: number, headers: HeaderBag, text: string): ForwardedError | null;
-  /** Status and headers for "every target failed". */
-  allFailed(
-    outcomes: Outcome[],
-    capacity: boolean,
-  ): {
-    status: number;
-    headers: Record<string, string>;
-  };
 }
+
+/** A format served from an upstream of the same format, with no translation. */
+export type WireProtocol = ClientProtocol & UpstreamProtocol;
 
 export const isClassified = (value: object): value is Classified => "outcome" in value;

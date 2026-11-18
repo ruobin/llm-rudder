@@ -19,6 +19,7 @@ clients:
   - { id: scripts, key_env: LLMR_KEY_SCRIPTS, notice: none, rpm: 120 }
   # Used by llmr-edge. See "Claude Code" in the README.
   - { id: claude-code, key_env: LLMR_KEY_CLAUDE_CODE, notice: none, edge: true }
+  - { id: codex, key_env: LLMR_KEY_CODEX, notice: text }
 
 accounts:
   # Any OpenAI-compatible gateway. compat can be new_api, openrouter or generic.
@@ -38,7 +39,9 @@ accounts:
     trust: first_party
     budget: { monthly_usd: 10 }
 
+  # Current GPT models can call tools only through the Responses API.
   openai-key:
+    api: openai.responses
     base_url: https://api.openai.com/v1
     api_key_env: OPENAI_API_KEY
     compat: openai
@@ -46,8 +49,8 @@ accounts:
     trust: first_party
     budget: { daily_usd: 5, monthly_usd: 50 }
 
-  # Serves /v1/messages, which is what Claude Code speaks. Until Phase 3 adds
-  # translation, only accounts with this api can serve Claude Code.
+  # Any client can use any account: the gateway translates between API formats.
+  # Within a tier, accounts in the client's own format are tried first.
   anthropic-key:
     api: anthropic.messages
     base_url: https://api.anthropic.com
@@ -72,7 +75,7 @@ tiers:
     targets:
       - { account: anthropic-key, model: claude-opus-5-5 }
       - { account: my-gateway, model: claude-opus-5-5 }
-      - { account: openai-key, model: gpt-6-astra, params: { reasoning_effort: high } }
+      - { account: openai-key, model: gpt-6.2-astra, effort: high }
       - { account: gemini-key, model: gemini-4-carbon }
   medium:
     fallback_tiers: [flash]
@@ -82,7 +85,7 @@ tiers:
       - { account: gemini-key, model: gemini-4-hydrogen }
       - { account: anthropic-key, model: claude-sonnet-5-5 }
       - { account: my-gateway, model: claude-sonnet-5-5 }
-      - { account: openai-key, model: gpt-6.1-sol }
+      - { account: openai-key, model: gpt-6.2-sol }
   flash:
     fallback_tiers: [medium]
     prefer: quality
@@ -105,6 +108,7 @@ aliases:
 routing:
   max_attempts_per_tier: 3
   deadline_s: 900 # time allowed to reach the first model output
+  prefer_same_format: true # try accounts in the client's own API format first
 
 timeouts:
   connect_s: 10
@@ -129,3 +133,4 @@ notifications:
   repeat_after_s: 3600
 
 pricing_file: pricing.yaml
+models_file: models.yaml

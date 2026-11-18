@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { globToRegExp } from "@llm-router/shared";
 import { parse as parseYaml } from "yaml";
@@ -6,6 +6,7 @@ import type { z } from "zod";
 import { hashKey } from "../auth/keys.js";
 import type { CostClass, Dialect, JsonObject, NoticeMode, Target, Trust } from "../types.js";
 import { COMPAT_PROFILES, type CompatProfile } from "./compat.js";
+import { EMPTY_CATALOG, parseModelCatalog, type ModelCatalog } from "./models.js";
 import { configSchema, pricingSchema, type RawConfig } from "./schema.js";
 
 export interface ClientConfig {
@@ -68,7 +69,7 @@ export interface Config {
   accounts: Map<string, AccountConfig>;
   tiers: Map<string, TierConfig>;
   aliases: { match: string; pattern: RegExp; tier: string }[];
-  routing: { maxAttemptsPerTier: number; deadlineMs: number };
+  routing: { maxAttemptsPerTier: number; deadlineMs: number; preferSameFormat: boolean };
   timeouts: {
     connectMs: number;
     firstByteMs: number;
@@ -80,6 +81,7 @@ export interface Config {
   notifications: { ntfyUrl?: string; webhookUrl?: string; repeatAfterMs: number };
   edge?: { planAccount: string; planModels: Map<string, string>; reportIntervalS: number };
   pricing: Pricing;
+  models: ModelCatalog;
 }
 
 export interface LoadedConfig {
@@ -166,6 +168,7 @@ export function buildConfig(
   raw: RawConfig,
   pricing: Pricing,
   env: Record<string, string | undefined>,
+  models: ModelCatalog = EMPTY_CATALOG,
 ): LoadedConfig {
   const problems: string[] = [];
   const warnings: string[] = [];
@@ -247,6 +250,7 @@ export function buildConfig(
         dropFields: overrides.drop_fields ?? base.dropFields,
         toolExtras: overrides.tool_extras ?? base.toolExtras,
         effortMap: overrides.effort_map ?? base.effortMap,
+        schemaStyle: overrides.schema_style ?? base.schemaStyle,
       },
       costClass: account.cost_class,
       trust: account.trust,
@@ -275,8 +279,8 @@ export function buildConfig(
         problems.push(`${where}: unknown account ${target.account}`);
       } else if (account.kind === "edge_only") {
         problems.push(`${where}: ${target.account} is only usable by llmr-edge`);
-      } else if (account.api === "anthropic.messages" && Object.keys(target.params).length > 0) {
-        problems.push(`${where}: params are not supported, because the body is passed through`);
+      } else if (account.api !== "openai.chat" && Object.keys(target.params).length > 0) {
+        problems.push(`${where}: params only apply to openai.chat accounts; use effort instead`);
       }
       const targetId = `${tierName}/${target.account}/${target.model}`;
       if (seen.has(targetId)) problems.push(`tiers.${tierName}: duplicate target ${targetId}`);
@@ -287,6 +291,7 @@ export function buildConfig(
         accountId: target.account,
         model: target.model,
         params: target.params as JsonObject,
+        ...(target.effort === undefined ? {} : { effort: target.effort }),
       });
     });
     if (targets.length === 1) {
@@ -370,6 +375,7 @@ export function buildConfig(
       routing: {
         maxAttemptsPerTier: raw.routing.max_attempts_per_tier,
         deadlineMs: seconds(raw.routing.deadline_s),
+        preferSameFormat: raw.routing.prefer_same_format,
       },
       timeouts: {
         connectMs: seconds(raw.timeouts.connect_s),
@@ -394,6 +400,7 @@ export function buildConfig(
           }
         : {}),
       pricing,
+      models,
     },
   };
 }
@@ -402,6 +409,7 @@ export function parseConfig(
   yamlText: string,
   pricingText: string,
   env: Record<string, string | undefined>,
+  modelsText?: string,
 ): LoadedConfig {
   const document: unknown = parseYaml(yamlText);
   const secrets: string[] = [];
@@ -413,7 +421,17 @@ export function parseConfig(
   }
   const result = configSchema.safeParse(document);
   if (!result.success) throw new ConfigError(formatZodError(result.error));
-  return buildConfig(result.data, parsePricing(pricingText), env);
+  let models = EMPTY_CATALOG;
+  if (modelsText !== undefined) {
+    const parsed = parseModelCatalog(modelsText);
+    if (Array.isArray(parsed)) throw new ConfigError(parsed);
+    models = parsed;
+  }
+  const loaded = buildConfig(result.data, parsePricing(pricingText), env, models);
+  if (modelsText === undefined) {
+    loaded.warnings.push("models: no model catalog was found, so every model is assumed capable");
+  }
+  return loaded;
 }
 
 export function loadConfig(
@@ -421,9 +439,13 @@ export function loadConfig(
   env: Record<string, string | undefined> = process.env,
 ): LoadedConfig {
   const yamlText = readFileSync(path, "utf8");
-  const document = parseYaml(yamlText) as { pricing_file?: unknown } | null;
+  const document = parseYaml(yamlText) as { pricing_file?: unknown; models_file?: unknown } | null;
   const pricingFile =
     typeof document?.pricing_file === "string" ? document.pricing_file : "pricing.yaml";
+  const modelsFile =
+    typeof document?.models_file === "string" ? document.models_file : "models.yaml";
   const pricingText = readFileSync(resolve(dirname(path), pricingFile), "utf8");
-  return parseConfig(yamlText, pricingText, env);
+  const modelsPath = resolve(dirname(path), modelsFile);
+  const modelsText = existsSync(modelsPath) ? readFileSync(modelsPath, "utf8") : undefined;
+  return parseConfig(yamlText, pricingText, env, modelsText);
 }
