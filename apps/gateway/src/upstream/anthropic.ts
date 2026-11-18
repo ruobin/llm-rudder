@@ -1,14 +1,9 @@
-import type { Classified, JsonObject, Usage } from "../types.js";
+import type { Classified, Usage } from "../types.js";
 import { classifyEmbeddedError, classifyHttpError, type HeaderBag } from "./classify.js";
+import { asObject } from "../json.js";
 
 const count = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
-
-function asObject(value: unknown): JsonObject | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as JsonObject)
-    : null;
-}
 
 interface RawUsage {
   input?: number;

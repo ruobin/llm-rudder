@@ -13,22 +13,10 @@ import type {
   StreamStep,
   WireProtocol,
 } from "../protocol.js";
+import { asObject, parseObject } from "../../json.js";
+import { invalidResponse } from "../protocol.js";
 
 const REASONING_FIELDS = ["reasoning_content", "reasoning", "reasoning_text", "refusal"];
-
-function asObject(value: unknown): JsonObject | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as JsonObject)
-    : null;
-}
-
-function parseObject(text: string): JsonObject | null {
-  try {
-    return asObject(JSON.parse(text));
-  } catch {
-    return null;
-  }
-}
 
 function firstChoice(chunk: JsonObject): JsonObject | null {
   return Array.isArray(chunk.choices) ? asObject(chunk.choices[0]) : null;
@@ -96,14 +84,6 @@ function responseToEvents(response: JsonObject): SseEvent[] {
   const data = JSON.stringify(chunk);
   return [{ raw: `data: ${data}`, data, event: null, isComment: false }];
 }
-
-const invalidResponse = (message: string): Classified => ({
-  outcome: "upstream_error",
-  retryElsewhere: true,
-  scope: "model",
-  code: "invalid_response",
-  message,
-});
 
 class ChatStreamReader implements StreamReader {
   usage: Usage | null = null;

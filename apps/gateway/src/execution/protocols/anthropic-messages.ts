@@ -12,25 +12,8 @@ import {
 import type { SseEvent } from "../../upstream/sse.js";
 import { effortToAdd } from "../effort.js";
 import type { CompleteReply, StreamReader, StreamStep, WireProtocol } from "../protocol.js";
-
-function parseObject(text: string): JsonObject | null {
-  try {
-    const value: unknown = JSON.parse(text);
-    return value !== null && typeof value === "object" && !Array.isArray(value)
-      ? (value as JsonObject)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-const invalidResponse = (message: string): Classified => ({
-  outcome: "upstream_error",
-  retryElsewhere: true,
-  scope: "model",
-  code: "invalid_response",
-  message,
-});
+import { parseObject } from "../../json.js";
+import { invalidResponse } from "../protocol.js";
 
 function deltaChars(delta: JsonObject | undefined): number {
   if (!delta) return 0;

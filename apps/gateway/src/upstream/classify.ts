@@ -1,4 +1,5 @@
 import type { Classified, JsonObject, Outcome } from "../types.js";
+import { asObject } from "../json.js";
 
 export type HeaderBag = Record<string, string | string[] | undefined>;
 
@@ -68,12 +69,6 @@ interface ParsedError {
   /** The request field the error is about, when the upstream says. */
   param?: string;
   metadata: JsonObject;
-}
-
-function asObject(value: unknown): JsonObject | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as JsonObject)
-    : null;
 }
 
 /** Reads an error object, tolerating the shapes OpenAI-compatible services use. */

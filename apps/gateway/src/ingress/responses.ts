@@ -13,6 +13,7 @@ import type { Runtime } from "../runtime.js";
 import type { JsonObject } from "../types.js";
 import { clientAuthHook } from "./auth.js";
 import { deriveSessionKey } from "./session.js";
+import { headerText, invalidRequest } from "./request.js";
 
 const DEFAULT_CONTEXT_WINDOW = 200_000;
 const REASONING_LEVELS = [
@@ -38,19 +39,10 @@ How to work:
 
 When you finish, say briefly what changed and anything the user still needs to do. Refer to files by path.`;
 
-function invalidRequest(message: string, param: string): RouterError {
-  return new RouterError(400, "invalid_request", message, "invalid_request_error", {}, param);
-}
-
-function header(request: FastifyRequest, name: string): string | undefined {
-  const value = request.headers[name];
-  return typeof value === "string" && value !== "" ? value : undefined;
-}
-
 /** Codex can compress request bodies with zstd. */
 function readBody(request: FastifyRequest, maxBytes: number): Buffer {
   const raw = request.body as Buffer;
-  const encoding = header(request, "content-encoding");
+  const encoding = headerText(request, "content-encoding");
   if (encoding === undefined || encoding === "identity") return raw;
   if (encoding !== "zstd") {
     throw new RouterError(415, "unsupported_encoding", `Unsupported encoding "${encoding}".`);
@@ -84,7 +76,7 @@ function buildContext(
   }
   if (parsed.input === undefined) throw invalidRequest("`input` is required.", "input");
 
-  const tierHeader = header(request, "x-llmr-tier");
+  const tierHeader = headerText(request, "x-llmr-tier");
   const startedAt = runtime.now();
   return {
     requestId: ulid(startedAt),

@@ -1,6 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { ClientConfig } from "../config/load.js";
-import { RouterError } from "../errors.js";
 import { ClientResponse, OPENAI_ERRORS } from "../execution/client-response.js";
 import type { RequestContext } from "../execution/context.js";
 import { executeRequest } from "../execution/executor.js";
@@ -11,15 +10,7 @@ import type { Runtime } from "../runtime.js";
 import type { JsonObject } from "../types.js";
 import { clientAuthHook } from "./auth.js";
 import { deriveSessionKey } from "./session.js";
-
-function invalidRequest(message: string, param: string): RouterError {
-  return new RouterError(400, "invalid_request", message, "invalid_request_error", {}, param);
-}
-
-function headerText(request: FastifyRequest, name: string): string | undefined {
-  const value = request.headers[name];
-  return typeof value === "string" && value !== "" ? value : undefined;
-}
+import { headerText, invalidRequest } from "./request.js";
 
 function buildContext(
   request: FastifyRequest,

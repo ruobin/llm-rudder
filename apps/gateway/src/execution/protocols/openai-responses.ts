@@ -10,6 +10,8 @@ import type { SseEvent } from "../../upstream/sse.js";
 import { parseUsage } from "../../upstream/usage.js";
 import { effortToAdd } from "../effort.js";
 import type { CompleteReply, StreamReader, StreamStep, WireProtocol } from "../protocol.js";
+import { parseObject } from "../../json.js";
+import { invalidResponse } from "../protocol.js";
 
 const OUTPUT_EVENTS = new Set([
   "response.output_text.delta",
@@ -21,25 +23,6 @@ const OUTPUT_EVENTS = new Set([
 ]);
 /** Placed after any real output, so the note cannot collide with an upstream item. */
 const NOTICE_OUTPUT_INDEX = 1_000_000;
-
-function parseObject(text: string): JsonObject | null {
-  try {
-    const value: unknown = JSON.parse(text);
-    return value !== null && typeof value === "object" && !Array.isArray(value)
-      ? (value as JsonObject)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-const invalidResponse = (message: string): Classified => ({
-  outcome: "upstream_error",
-  retryElsewhere: true,
-  scope: "model",
-  code: "invalid_response",
-  message,
-});
 
 function failure(response: JsonObject | undefined): Classified {
   return classifyEmbeddedError({

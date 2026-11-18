@@ -102,3 +102,12 @@ export interface UpstreamProtocol {
 export type WireProtocol = ClientProtocol & UpstreamProtocol;
 
 export const isClassified = (value: object): value is Classified => "outcome" in value;
+
+/** The upstream answered, but not with anything that can be read. */
+export const invalidResponse = (message: string): Classified => ({
+  outcome: "upstream_error",
+  retryElsewhere: true,
+  scope: "model",
+  code: "invalid_response",
+  message,
+});

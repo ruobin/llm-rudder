@@ -16,19 +16,11 @@ import type { Runtime } from "../runtime.js";
 import type { JsonObject } from "../types.js";
 import { clientAuthHook } from "./auth.js";
 import { deriveSessionKey } from "./session.js";
+import { headerText, invalidRequest } from "./request.js";
 
 const COUNT_TOKENS_TIMEOUT_MS = 30_000;
 /** Answers that mean this target cannot count tokens for us right now. */
 const TRY_NEXT_COUNT_STATUS = new Set([401, 402, 403, 404, 408, 429]);
-
-function invalidRequest(message: string): RouterError {
-  return new RouterError(400, "invalid_request", message, "invalid_request_error");
-}
-
-function header(request: FastifyRequest, name: string): string | undefined {
-  const value = request.headers[name];
-  return typeof value === "string" && value !== "" ? value : undefined;
-}
 
 function parseBody(raw: Buffer): JsonObject {
   let body: unknown;
@@ -57,12 +49,12 @@ function buildContext(
   if (!Array.isArray(body.messages)) throw invalidRequest("`messages` must be an array.");
 
   const { config } = runtime;
-  const tierHeader = header(request, "x-llmr-tier");
+  const tierHeader = headerText(request, "x-llmr-tier");
   // Only an edge may say that it has already tried something else.
-  const reportedTier = client.edge ? header(request, "x-llmr-requested-tier") : undefined;
+  const reportedTier = client.edge ? headerText(request, "x-llmr-requested-tier") : undefined;
   const originalTier = reportedTier && config.tiers.has(reportedTier) ? reportedTier : undefined;
   const planExhausted =
-    client.edge && config.edge && header(request, "x-llmr-plan-exhausted") === "1";
+    client.edge && config.edge && headerText(request, "x-llmr-plan-exhausted") === "1";
   const search = new URLSearchParams(request.url.split("?")[1] ?? "");
   const startedAt = runtime.now();
 
