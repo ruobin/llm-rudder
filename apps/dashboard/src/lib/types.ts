@@ -66,11 +66,19 @@ export interface EdgeReport {
   usage: Record<string, number>;
 }
 
+export interface ClusterStatus {
+  mode: "single" | "shared";
+  connected: boolean;
+  instanceId: string;
+  instances: { id: string; startedAt: string; lastSeenAt: string }[];
+}
+
 export interface GatewayStatus {
   uptimeS: number;
   draining: boolean;
   pricingVersion: string;
   pinnedConversations: number;
+  cluster?: ClusterStatus;
   chatgpt: ChatGptStatus[];
   fallbacks: Fallback[];
   tiers: TierStatus[];

@@ -15,8 +15,15 @@ import {
   formatUsd,
 } from "@/lib/format";
 import { getStatus, getUsage } from "@/lib/gateway";
+import type { GatewayStatus } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Overview" };
+
+function describeGateway(status: GatewayStatus): string {
+  const uptime = `Gateway up for ${formatUptime(status.uptimeS)}`;
+  const instances = status.cluster?.instances.length ?? 0;
+  return instances > 1 ? `${uptime}, running ${instances} instances` : uptime;
+}
 
 export default async function OverviewPage() {
   const [status, usage] = await Promise.all([getStatus(), getUsage(1)]);
@@ -27,14 +34,19 @@ export default async function OverviewPage() {
   return (
     <>
       <AutoRefresh />
-      <PageHeader title="Overview" description={`Gateway up for ${formatUptime(status.uptimeS)}`}>
-        {unavailable.length === 0 ? (
-          <StateBadge state="ok" />
-        ) : (
-          <Badge tone="critical">
-            {unavailable.length} {unavailable.length === 1 ? "tier" : "tiers"} unavailable
-          </Badge>
-        )}
+      <PageHeader title="Overview" description={describeGateway(status)}>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {status.cluster?.mode === "shared" && !status.cluster.connected ? (
+            <Badge tone="warning">Instances not sharing state</Badge>
+          ) : null}
+          {unavailable.length === 0 ? (
+            <StateBadge state="ok" />
+          ) : (
+            <Badge tone="critical">
+              {unavailable.length} {unavailable.length === 1 ? "tier" : "tiers"} unavailable
+            </Badge>
+          )}
+        </div>
       </PageHeader>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
