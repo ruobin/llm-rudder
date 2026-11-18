@@ -841,7 +841,7 @@ Classification is a pure function, so every rule has a unit test. It runs on HTT
 | `refusal`            | Content filter, New API `sensitive_words_detected`, `prompt_blocked`                                                                                                                                   | **No.** The router does not shop for a model that will comply. | None.                                                                                    |
 | `mid_stream_failure` | Any failure after the commit point                                                                                                                                                                     | No                                                             | Model `cooldown`.                                                                        |
 
-Errors also carry a scope: the account, one model, or only this request. The ChatGPT plan's codes are listed in [section 8.13](#chatgpt-plan-phase-4).
+Errors also carry a scope: the account, one model, or only this request. The ChatGPT plan's codes are listed in [section 8.13](#chatgpt-plan-phase-4). A service that passes on errors from its own upstreams is handled differently, as [section 8.10](#810-third-party-gateways) explains.
 
 ### 8.8 Quota state
 
@@ -928,6 +928,7 @@ interface CompatProfile {
   systemRole: "keep" | "system"; // rewrite "developer" messages
   dropFields: string[]; // fields this upstream rejects
   toolExtras: boolean; // keep tool_calls[].extra_content (Gemini)
+  relaysErrors: boolean; // passes on errors from its own upstreams
 }
 ```
 
@@ -943,14 +944,18 @@ Built-in profiles: `openai`, `gemini`, `new_api`, `openrouter`, `generic`. An ac
 | No channel available        | `get_channel_failed`, `channel:no_available_key`                                                            | `unsupported` for that model |
 | Content blocked             | `sensitive_words_detected`, `prompt_blocked`                                                                | `refusal`                    |
 | Error after streaming began | A `data:` event `{"error":{...}}` with no `choices`                                                         | Error event                  |
+| A channel fails             | The channel's status, `type` and `code`, passed on unchanged                                                | A relayed failure, see below |
 
 **Rules that apply to all gateways:**
 
 - **Do not trust the status code alone.** Some return `200` with `error` in the body, or send the error in the stream. OpenRouter does this after it has accepted a request.
 - **Non-JSON error pages** from a CDN or proxy count as `upstream_error`.
 - **Do not retry what the gateway already retried.** New API has its own channel retry, so the router moves on to a different target.
-- **Loop guard.** The router sends `x-llmr-hop` with its instance ID, and refuses a request carrying its own ID. This stops a loop if New API ever has a channel pointing back at the router.
-- **Trust levels.** `self_hosted` for your own gateway, `third_party` for others. A client can be limited to certain accounts with `allow_accounts`, so sensitive scripts never reach a third party.
+- **Relayed errors describe one route.** A `401`, a `403` or "out of quota" from a gateway may be about one of its channels, not your key, and the next request may take another channel. For an account with `relaysErrors`, such a failure rests only that target for a few seconds, and repeated failures trip its circuit breaker. In the background the router asks the service itself, at most once a minute, with `GET /models` and, for quota errors, the balance route. The whole account stops only if that confirms the problem.
+- **Which accounts relay errors.** `new_api` accounts do. So do `generic` accounts unless they are `first_party`, because an unnamed service may have anything behind it. `compat_overrides.relays_errors` sets it explicitly.
+- **Divide the work between the layers.** The router chooses the model and when to leave an account. The gateway chooses the channel for that model. A gateway target adds capacity only if its channels do not draw on the same subscription as the targets before it.
+- **Loop guard.** The router sends `x-llmr-hop` with its instance ID, and refuses a request carrying its own ID. New API does not forward unknown headers by default, so a channel pointing back at the router needs the header override `{"x-llmr-hop": "{client_header:x-llmr-hop}"}`. Without it the guard cannot see the loop.
+- **Trust levels.** `self_hosted` for your own gateway, `third_party` for others. A gateway is only as private as what it forwards to, so use `third_party` when its channels include outside services. A client can be limited to certain accounts with `allow_accounts`, so sensitive scripts never reach a third party.
 - **Model honesty.** The router records the `model` the upstream reports, and the dashboard's request page shows when it differs. This catches only honest mislabeling: research shows black-box checks cannot reliably prove which model answered.
 - **Balance checks (Phase 5).** New API exposes `GET /v1/dashboard/billing/subscription` and `/usage` to the same key. OpenRouter exposes `GET /api/v1/key`. These can warn before a balance reaches zero.
 

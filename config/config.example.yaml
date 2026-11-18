@@ -24,12 +24,14 @@ clients:
 
 accounts:
   # Any OpenAI-compatible gateway. compat can be new_api, openrouter or generic.
+  # Gateways pass on their channels' errors, so llm-rudder confirms a "bad key" or
+  # "out of quota" with the gateway before it stops using the whole account.
   my-gateway:
     base_url_env: MY_GATEWAY_BASE_URL
     api_key_env: MY_GATEWAY_API_KEY
     compat: new_api
     cost_class: prepaid
-    trust: self_hosted
+    trust: self_hosted # third_party if its channels include outside services
     # balance: { warn_below_usd: 5 } # warns before this key runs out
 
   # Set monthly_usd to your Google AI plan's developer credit: 10, 40 or 100.

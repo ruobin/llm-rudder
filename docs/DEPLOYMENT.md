@@ -72,6 +72,35 @@ tiers:
 
 With a single provider there is nothing to fail over to. When the plan reaches a limit, requests fail until it recovers, so add another account when you can.
 
+### Add a gateway or another provider
+
+Any service with an OpenAI-compatible or Anthropic-compatible API can be an account, including another gateway such as New API, One API, LiteLLM or sub2api. Put its key in `.env`, add the account, and list its models under the tiers that should use it. Targets are tried in order.
+
+```yaml
+accounts:
+  my-gateway:
+    api: openai.responses # or openai.chat, or anthropic.messages
+    base_url: https://gateway.example.com/v1
+    api_key_env: MY_GATEWAY_API_KEY
+    compat: new_api # leave this out for other gateways
+    cost_class: prepaid
+
+tiers:
+  medium:
+    fallback_tiers: [flash]
+    targets:
+      - { account: chatgpt-plan, model: gpt-6.2-sol }
+      - { account: my-gateway, model: gpt-6.1-sol }
+```
+
+When one gateway sits behind another:
+
+- **Give each layer one job.** llm-rudder chooses the model and when to leave an account. The gateway chooses the channel for that model.
+- **Check that a fallback has its own capacity.** A channel that uses the same subscription as an earlier target runs out at the same time.
+- **Errors may not be about your key.** Gateways pass on their channels' errors, so llm-rudder asks the gateway before it stops using the account. Use `compat_overrides: { relays_errors: false }` only for a service that answers for itself.
+- **Use `trust: third_party` if its channels include outside services.** Your prompts reach whatever the gateway forwards them to.
+- **Do not point the gateway back at llm-rudder.** If you must, forward the loop guard. In New API, set the channel's header override to `{"x-llmr-hop": "{client_header:x-llmr-hop}"}`.
+
 ## 3. Start it
 
 ```bash
