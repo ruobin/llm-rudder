@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CHATGPT_DEFAULT_ACCOUNT, chatGptEndpoints, CHATGPT_USAGE_URL } from "@llm-router/shared";
 import { startEdge } from "./app.js";
 import {
   configIsExposed,
@@ -19,6 +20,20 @@ import {
   readConfigFile,
   writeConfigFile,
 } from "./config.js";
+import {
+  activeCredential,
+  ChatGptLoginError,
+  DEFAULT_VPS_DIR,
+  describeCredential,
+  loginToChatGpt,
+  openInBrowser,
+  pushCredential,
+  remoteHostId,
+  remoteLogout,
+  remoteStatus,
+  signOut,
+  type RemoteGateway,
+} from "./chatgpt.js";
 import { desktopNotify } from "./notify.js";
 import { edgePaths, type EdgePaths } from "./paths.js";
 import { EDGE_KEY_HEADER } from "./server.js";
@@ -37,6 +52,13 @@ Usage:
   llmr-edge status                Show plan and gateway state
   llmr-edge statusline            Print one line for Claude Code's status bar
   llmr-edge doctor                Check the setup
+  llmr-edge chatgpt login         Continue with ChatGPT in your browser (--new)
+  llmr-edge chatgpt push TARGET   Send the sign-in to the VPS over SSH
+  llmr-edge chatgpt login --for TARGET   Sign the VPS in again
+  llmr-edge chatgpt status [--for TARGET]
+  llmr-edge chatgpt logout [--for TARGET]
+                                  With a TARGET, these use --dir (default /opt/llm-router)
+                                  and --account (default chatgpt-plan)
 `;
 
 function flag(args: string[], name: string): string | undefined {
@@ -226,6 +248,73 @@ async function doctor(paths: EdgePaths): Promise<void> {
   if (failed) process.exitCode = 1;
 }
 
+function remoteGateway(target: string, args: string[]): RemoteGateway {
+  return {
+    target,
+    directory: flag(args, "--dir") ?? DEFAULT_VPS_DIR,
+    account: flag(args, "--account") ?? CHATGPT_DEFAULT_ACCOUNT,
+  };
+}
+
+async function chatgpt(paths: EdgePaths, args: string[]): Promise<void> {
+  const endpoints = chatGptEndpoints();
+  const forTarget = flag(args, "--for");
+  const remote = forTarget ? remoteGateway(forTarget, args) : null;
+  switch (args[0]) {
+    case "login": {
+      // After the first transfer, the VPS signs in under its own host ID.
+      const hostId = remote ? await remoteHostId(remote) : undefined;
+      const credential = await loginToChatGpt({
+        paths,
+        endpoints,
+        openBrowser: openInBrowser,
+        print: (text) => console.log(text),
+        fresh: args.includes("--new"),
+        ...(hostId ? { hostId } : {}),
+      });
+      console.log(`Signed in as ${credential.email ?? credential.subject}.`);
+      if (remote) {
+        await pushCredential(paths, remote);
+        console.log("The VPS now holds this sign-in and will renew it.");
+      } else {
+        console.log("Next: llmr-edge chatgpt push user@your-vps");
+      }
+      return;
+    }
+    case "push": {
+      const target = args[1];
+      if (!target || target.startsWith("--")) {
+        throw new EdgeConfigError("Usage: llmr-edge chatgpt push user@your-vps");
+      }
+      await pushCredential(paths, remoteGateway(target, args));
+      console.log("The VPS now holds this sign-in and will renew it.");
+      console.log(`Using ChatGPT plan. Manage usage and this app's limit: ${CHATGPT_USAGE_URL}`);
+      return;
+    }
+    case "status":
+      console.log(
+        remote ? (await remoteStatus(remote)).trim() : describeCredential(activeCredential(paths)),
+      );
+      return;
+    case "logout": {
+      if (remote) {
+        console.log((await remoteLogout(remote)).trim());
+        return;
+      }
+      const revoked = await signOut(paths, endpoints);
+      console.log(
+        revoked
+          ? "Signed out on this computer."
+          : "Signed out here, but OpenAI did not confirm it. You can disconnect the app in ChatGPT settings.",
+      );
+      return;
+    }
+    default:
+      console.error(USAGE);
+      process.exitCode = 2;
+  }
+}
+
 async function main(): Promise<void> {
   const paths = edgePaths();
   const [command = "serve", ...args] = process.argv.slice(2);
@@ -244,6 +333,8 @@ async function main(): Promise<void> {
       return status(paths);
     case "doctor":
       return doctor(paths);
+    case "chatgpt":
+      return chatgpt(paths, args);
     case "version":
     case "--version":
       console.log(EDGE_VERSION);
@@ -259,6 +350,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  console.error(error instanceof EdgeConfigError ? error.message : error);
+  const expected = error instanceof EdgeConfigError || error instanceof ChatGptLoginError;
+  console.error(expected ? (error as Error).message : error);
   process.exit(1);
 });
