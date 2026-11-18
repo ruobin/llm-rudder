@@ -1,0 +1,30 @@
+{
+  "name": "@llm-router/edge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local helper that keeps Claude Code on your plan and overflows to the gateway",
+  "type": "module",
+  "bin": {
+    "llmr-edge": "dist/llmr-edge.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "esbuild src/cli.ts --bundle --platform=node --target=node22 --format=esm --conditions=@llm-router/source --banner:js='#!/usr/bin/env node' --outfile=dist/llmr-edge.mjs --log-level=warning",
+    "cli": "tsx --conditions=@llm-router/source src/cli.ts",
+    "smoke:claude-code": "tsx --conditions=@llm-router/source dev/claude-code-smoke.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@llm-router/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.27.0",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.0"
+  }
+}
