@@ -401,7 +401,7 @@ class RequestRun {
       });
       result.httpStatus = response.status;
       if (response.status >= 400) {
-        const text = await response.body.text();
+        const text = await readLimited(response.body);
         result.classified = protocol.classifyHttpError(
           response.status,
           response.headers,

@@ -275,6 +275,10 @@ export async function restoreState(runtime: Runtime): Promise<void> {
   for (const [accountId, session] of runtime.chatgpt) {
     if (session.usable) runtime.quota.clearDisabled(accountId);
   }
+  // A restart is how a replaced key takes effect, so a refused key gets another try too.
+  for (const account of runtime.config.accounts.values()) {
+    if (account.kind === "http") runtime.quota.clearDisabled(account.id);
+  }
   runtime.budgets.load(spend);
   runtime.pins.load(pins);
 }

@@ -197,7 +197,7 @@ set -a; . ./.env; set +a
 curl -s -H "Authorization: Bearer $LLMR_ADMIN_KEY" http://127.0.0.1:4141/router/status
 ```
 
-To let a stopped or paused account be tried again, replace `ACCOUNT` and run:
+A refused key stops its account. After you replace the key in `.env`, `docker compose up -d gateway` restarts the gateway and tries the account again. To let a stopped or paused account be tried again without a restart, replace `ACCOUNT` and run:
 
 ```bash
 curl -X POST -H "Authorization: Bearer $LLMR_ADMIN_KEY" \

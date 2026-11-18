@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { errorStep } from "../src/dev/fake-upstream.js";
+import { MemoryPersistence } from "../src/ledger/records.js";
 import type { Classified, Target } from "../src/types.js";
 import { asRelayedFailure, classifyHttpError } from "../src/upstream/classify.js";
 import { readJson, startGateway, userMessage, type TestGateway } from "./helpers.js";
@@ -115,6 +116,29 @@ describe("errors relayed by a gateway", () => {
     expect(availability("medium")).toMatchObject({ available: false, reason: "backoff" });
   });
 
+  it("pauses the gateway on a billing error when its balance has run out", async () => {
+    await start();
+    gateway.upstream
+      .setAlways("gw-frontier", errorStep(403, "", "Access denied", "new_api_error"))
+      .setPath("/v1/dashboard/billing/subscription", { type: "json", body: { hard_limit_usd: 5 } })
+      .setPath("/v1/dashboard/billing/usage", { type: "json", body: { total_usage: 500 } });
+
+    expect((await ask("frontier")).status).toBe(200);
+    expect(await eventKinds()).toContain("account_exhausted");
+    expect(availability("medium")).toMatchObject({ available: false, reason: "backoff" });
+  });
+
+  it("treats a refused key as the cause, whatever error the request got", async () => {
+    await start();
+    gateway.upstream
+      .setAlways("gw-frontier", OUT_OF_QUOTA)
+      .setPath("/v1/models", errorStep(401, "", "Invalid token", "new_api_error"));
+
+    expect((await ask("frontier")).status).toBe(200);
+    expect(await eventKinds()).toContain("account_disabled");
+    expect(availability("medium")).toMatchObject({ available: false, reason: "disabled" });
+  });
+
   it("does not trust a key check that fails or says nothing", async () => {
     await start();
     gateway.upstream
@@ -184,6 +208,39 @@ describe("errors relayed by a gateway", () => {
     expect(await eventKinds()).toContain("account_disabled");
     expect(availability("solo")).toMatchObject({ available: false, reason: "disabled" });
     expect(keyChecks()).toHaveLength(0);
+  });
+});
+
+describe("a stopped account after a restart", () => {
+  afterEach(closeGateway);
+
+  const restart = async (persistence: MemoryPersistence) => {
+    await gateway.close();
+    gateway = await startGateway({ yaml: CONFIG, now: () => clock, persistence });
+  };
+
+  it("gets another try, because a restart is how a new key takes effect", async () => {
+    const persistence = new MemoryPersistence();
+    clock = 1_000_000;
+    gateway = await startGateway({ yaml: CONFIG, now: () => clock, persistence });
+    gateway.upstream.setAlways("direct-solo", errorStep(401, "", "Invalid key"));
+    expect((await ask("solo")).status).toBeGreaterThanOrEqual(400);
+    expect(availability("solo")).toMatchObject({ available: false, reason: "disabled" });
+
+    await restart(persistence);
+    expect(availability("solo")).toEqual({ available: true });
+    expect((await ask("solo")).status).toBe(200);
+  });
+
+  it("still waits out a usage limit", async () => {
+    const persistence = new MemoryPersistence();
+    clock = 1_000_000;
+    gateway = await startGateway({ yaml: CONFIG, now: () => clock, persistence });
+    gateway.upstream.setAlways("direct-solo", errorStep(429, "insufficient_quota", "No quota"));
+    expect((await ask("solo")).status).toBeGreaterThanOrEqual(400);
+
+    await restart(persistence);
+    expect(availability("solo")).toMatchObject({ available: false, reason: "backoff" });
   });
 });
 
