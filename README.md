@@ -178,17 +178,17 @@ Each app uses your gateway's address followed by `/v1`, its own key, and `fronti
 
 ## Documentation
 
-| Read this                              | To learn                                                                     |
-| -------------------------------------- | ---------------------------------------------------------------------------- |
-| [User guide](docs/USER_GUIDE.md)       | How routing works, setting up accounts, connecting apps, using the dashboard |
-| [Deployment guide](docs/DEPLOYMENT.md) | Running it on a server: access, updates, alerts, metrics and backups         |
-| [Design](docs/DESIGN.md)               | The architecture and the reasons behind it                                   |
-| [To-do list](docs/TODO.md)             | What is finished, and what still needs real-world testing                    |
-| [Contributing](CONTRIBUTING.md)        | A tour of the code, and how to change and test it                            |
+| Read this                               | To learn                                                                      |
+| --------------------------------------- | ----------------------------------------------------------------------------- |
+| [User guide](docs/USER_GUIDE.md)        | How routing works, setting up accounts, connecting apps, using the dashboard  |
+| [Deployment guide](docs/DEPLOYMENT.md)  | Running it on a server: access, updates, alerts, metrics and backups          |
+| [Design](docs/DESIGN.md)                | The architecture and the reasons behind it                                    |
+| [To-do list](docs/TODO.md)              | What is finished, and what still needs real-world testing                     |
+| [Study and contribute](CONTRIBUTING.md) | A guided path through the project, a code tour, and how to change and test it |
 
 ## Project status
 
-Phases 1 to 5 are built, including the dashboard, metrics, alerts and encrypted backups. From Phase 6, [several instances](docs/DEPLOYMENT.md#14-run-several-instances) can share the work, with updates that do not interrupt requests. A deployed gateway has served real requests through a ChatGPT plan and through a New API gateway, including tool calls in all three API formats. The real OpenCode, Pi, Claude Code and Codex command-line clients are tested automatically against fake providers. Direct OpenAI, Anthropic and Gemini API keys, and those clients on real accounts, still need testing. The [to-do list](docs/TODO.md) has the details.
+Phases 1 to 5 are built, including the dashboard, metrics, alerts and encrypted backups. From Phase 6, [several instances](docs/DEPLOYMENT.md#14-run-several-instances) can share the work, with updates that do not interrupt requests. That setup has been tested with a fake provider but not yet on a production server. A deployed gateway has served real requests through a ChatGPT plan and through a New API gateway, including tool calls in all three API formats. The real OpenCode, Pi, Claude Code and Codex command-line clients are tested automatically against fake providers. Direct OpenAI, Anthropic and Gemini API keys, and those clients on real accounts, still need testing. The [to-do list](docs/TODO.md) has the details.
 
 ## Develop
 

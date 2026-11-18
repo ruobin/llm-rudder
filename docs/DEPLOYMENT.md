@@ -1,6 +1,6 @@
 # Deploying llm-rudder
 
-This guide takes a VPS to a working gateway and covers daily operation, then the optional dashboard, alerts, charts and published images. Commands run on the VPS unless a step says otherwise, and they assume the project is in `/opt/llm-rudder`.
+This guide takes a VPS to a working gateway and covers daily operation, then the optional dashboard, alerts, charts, published images and several instances. Commands run on the VPS unless a step says otherwise, and they assume the project is in `/opt/llm-rudder`.
 
 ## What you need
 
@@ -318,6 +318,8 @@ The script waits for the new gateway to become ready, and returns to the previou
 ## 14. Run several instances
 
 Two or more gateway instances let you update without interrupting anyone, and keep serving if one process crashes. They run on the same server and share their state through Redis. This does not protect you from losing the whole server.
+
+This setup is new. It has been tested under load with a fake provider, including rolling updates, a Redis outage, a crashed instance and a failed update, but not yet with real accounts on a production server. One instance remains the simpler choice unless you need these benefits.
 
 Add a password for Redis and turn on the scaled setup:
 

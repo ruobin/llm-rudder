@@ -12,7 +12,7 @@ This is the working checklist. [`DESIGN.md`](DESIGN.md) explains why. Each phase
 | [3](#phase-3--translation-codex-and-pins) | Translation, Codex and pins           | 2–3 weeks  | Code done; real keys pending   |
 | [4](#phase-4--chatgpt-plan)               | ChatGPT plan                          | ~1 week    | Deployed; long-run checks left |
 | [5](#phase-5--dashboard-and-hardening)    | Dashboard and hardening               | 2–3 weeks  | Deployed; long-run checks left |
-| [6](#phase-6--scale)                      | Scale                                 | Open-ended | Stage 2 built                  |
+| [6](#phase-6--scale)                      | Scale                                 | Open-ended | Stage 2 built; paused          |
 
 ---
 
@@ -262,6 +262,8 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 
 The stages and their triggers are in `DESIGN.md` section 10.
 
+**Status: paused after Stage 2.** Its code passes the automated tests and a load test with a fake provider. It has not run on a production server or with real accounts, and the later stages have not started.
+
 **Stage 2: several instances on one server**
 
 - [x] Redis stores for quota, budgets, pins, rate limits and fallback episodes
@@ -269,7 +271,7 @@ The stages and their triggers are in `DESIGN.md` section 10.
 - [x] Token-refresh lock for instances that share a ChatGPT sign-in
 - [x] Client keys, config reloads and tool-call artifacts shared between instances
 - [x] Instances keep serving when Redis is down, and catch up when it returns
-- [ ] **(you)** Decide whether your server should run two instances
+- [ ] **(you)** Try two instances on a real server with real accounts, including a real ChatGPT token renewal
 
 **Later stages**
 

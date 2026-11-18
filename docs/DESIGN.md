@@ -1,11 +1,11 @@
 # llm-rudder — Design
 
-|            |                                                                                                                                  |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Status     | Draft 2, updated 2026-11-18 with Phases 1 to 5 as built. It replaces the local-first Python Draft 1, which stays in git history. |
-| Scope      | A personal model gateway on your own VPS, with a phased path to a production-grade service                                       |
-| Deployment | [`DEPLOYMENT.md`](DEPLOYMENT.md) has the tested steps for installing and operating it.                                           |
-| Work plan  | [`TODO.md`](TODO.md) splits the work into phases with checklists and exit criteria.                                              |
+|            |                                                                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Status     | Draft 2, updated 2026-11-19 with Phases 1 to 5 and the first scaling stage as built. It replaces the local-first Python Draft 1, which stays in git history. |
+| Scope      | A personal model gateway on your own VPS, with a phased path to a production-grade service                                                                   |
+| Deployment | [`DEPLOYMENT.md`](DEPLOYMENT.md) has the tested steps for installing and operating it.                                                                       |
+| Work plan  | [`TODO.md`](TODO.md) splits the work into phases with checklists and exit criteria.                                                                          |
 
 **In one sentence:** llm-rudder is one HTTPS endpoint on your VPS that turns `frontier`, `medium` and `flash` into real models across your subscriptions, API keys and third-party gateways, moves to the next option when one runs out, and warns you when it has to drop to a lower tier.
 
@@ -450,7 +450,9 @@ llm-rudder/
 │   │   ├── src/
 │   │   │   ├── main.ts          # process entry point
 │   │   │   ├── app.ts           # builds the Fastify app (also used by tests)
-│   │   │   ├── cli.ts           # keygen, check-config, ChatGPT sign-in commands
+│   │   │   ├── cli.ts           # keygen, check-config, check-accounts, ChatGPT sign-in
+│   │   │   ├── check-accounts.ts # tests each account's key and models
+│   │   │   ├── cluster/         # state shared between instances, through Redis
 │   │   │   ├── runtime.ts       # wires the services together
 │   │   │   ├── dev/             # fake upstream and the demo
 │   │   │   ├── chatgpt/         # the ChatGPT sign-in held on the VPS
@@ -701,17 +703,21 @@ type Outcome =
 interface Classified {
   outcome: Outcome;
   retryElsewhere: boolean;
-  scope?: "account" | "model";
+  scope?: "account" | "model" | "request";
   retryAfterS?: number;
   resetsAt?: number; // epoch milliseconds
   code?: string;
   message?: string;
+  clientStatus?: number; // the status to return if this error reaches the client
 }
 
-interface QuotaStore {
-  get(accountId: string, scope: string): QuotaState;
-  set(accountId: string, scope: string, state: QuotaState): void;
-  all(): QuotaEntry[];
+// A change to one quota state, as shared with other instances.
+interface QuotaRecord {
+  accountId: string;
+  scope: string;
+  state: QuotaState | null; // null when the state was cleared
+  at: number; // the latest change wins
+  by: string; // the instance that made it
 }
 ```
 
@@ -954,7 +960,7 @@ Built-in profiles: `openai`, `gemini`, `new_api`, `openrouter`, `generic`. An ac
 - **Relayed errors describe one route.** A `401`, a `403` or "out of quota" from a gateway may be about one of its channels, not your key, and the next request may take another channel. For an account with `relaysErrors`, such a failure rests only that target for a few seconds, and repeated failures trip its circuit breaker. In the background the router asks the service itself, at most once a minute, with `GET /models` and, for quota errors, the balance route. The whole account stops only if that confirms the problem.
 - **Which accounts relay errors.** `new_api` accounts do. So do `generic` accounts unless they are `first_party`, because an unnamed service may have anything behind it. `compat_overrides.relays_errors` sets it explicitly.
 - **Divide the work between the layers.** The router chooses the model and when to leave an account. The gateway chooses the channel for that model. A gateway target adds capacity only if its channels do not draw on the same subscription as the targets before it.
-- **Loop guard.** The router sends `x-llmr-hop` with its instance ID, and refuses a request carrying its own ID. New API does not forward unknown headers by default, so a channel pointing back at the router needs the header override `{"x-llmr-hop": "{client_header:x-llmr-hop}"}`. Without it the guard cannot see the loop.
+- **Loop guard.** The router sends `x-llmr-hop` with an ID shared by all of its instances, and refuses a request carrying that ID. New API does not forward unknown headers by default, so a channel pointing back at the router needs the header override `{"x-llmr-hop": "{client_header:x-llmr-hop}"}`. Without it the guard cannot see the loop.
 - **Trust levels.** `self_hosted` for your own gateway, `third_party` for others. A gateway is only as private as what it forwards to, so use `third_party` when its channels include outside services. A client can be limited to certain accounts with `allow_accounts`, so sensitive scripts never reach a third party.
 - **Model honesty.** The router records the `model` the upstream reports, and the dashboard's request page shows when it differs. This catches only honest mislabeling: research shows black-box checks cannot reliably prove which model answered.
 - **Balance checks (Phase 5).** New API exposes `GET /v1/dashboard/billing/subscription` and `/usage` to the same key. OpenRouter exposes `GET /api/v1/key`. These can warn before a balance reaches zero.
@@ -1484,7 +1490,7 @@ flowchart LR
 | **3. Two hosts**         | A VPS failure would hurt too much                            | Active VPS and standby VPS in different supported regions, replicated MySQL, DNS or load-balancer failover | Health-based failover. Each host gets its own ChatGPT host ID, and only one refreshes tokens at a time.                                   |
 | **4. Multi-user**        | Other people use it                                          | Kubernetes or a managed container service, managed MySQL and Redis, object storage for exports             | Per-user accounts and credentials, reservation-based budgets, organizations, audit log. Each person connects **their own** subscriptions. |
 
-**Stage 2 is built.** Set `REDIS_URL`, or use `docker-compose.scale.yml`, and instances work together. The [deployment guide](DEPLOYMENT.md#14-run-several-instances) explains how to run it.
+**Stage 2 is built.** Set `REDIS_URL`, or use `docker-compose.scale.yml`, and instances work together. The [deployment guide](DEPLOYMENT.md#14-run-several-instances) explains how to run it. It has passed automated tests against real Redis and a load test with two instances and a fake provider, covering rolling updates, a Redis outage, a crash and a failed update. It has not yet run on a production server or with real accounts.
 
 ```mermaid
 flowchart LR
