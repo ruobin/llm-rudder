@@ -23,6 +23,8 @@ import { ConfigError, loadConfig } from "./config/load.js";
 const usage = `Usage:
   cli keygen [NAME ...]    Print new keys, one per name, in .env format
   cli check-config [PATH]  Validate a config file (default: config/config.yaml)
+  cli check-accounts [--live] [ACCOUNT ...]
+                           Check keys and models. --live also sends short real requests
   cli dashboard-secrets    Print dashboard settings for .env, and its password to stderr
   cli backup-seal          Encrypt standard input with LLMR_BACKUP_PASSPHRASE
   cli backup-open          Decrypt standard input with LLMR_BACKUP_PASSPHRASE
@@ -115,11 +117,45 @@ async function chatgpt(args: string[]): Promise<number> {
   }
 }
 
+async function checkAccountsCommand(args: string[]): Promise<number> {
+  const live = args.includes("--live");
+  const accounts = args.filter((arg) => arg !== "--live");
+  const unknownFlag = accounts.find((arg) => arg.startsWith("-"));
+  if (unknownFlag) {
+    console.error(usage);
+    return 2;
+  }
+  const path = resolve(process.env.LLMR_CONFIG ?? "config/config.yaml");
+  let config;
+  try {
+    ({ config } = loadConfig(path));
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      console.error(error.message);
+      return 1;
+    }
+    throw error;
+  }
+  const missing = accounts.filter((id) => !config.accounts.has(id));
+  if (missing.length > 0) {
+    console.error(`No such account in the config: ${missing.join(", ")}`);
+    return 2;
+  }
+  // Loaded here so the other commands do not have to start the whole gateway code.
+  const { checkAccounts, formatReports, hasFailures } = await import("./check-accounts.js");
+  const reports = await checkAccounts(config, { accounts, live });
+  console.log(formatReports(reports));
+  if (!live) console.log("\nAdd --live to send two short real requests to each model.");
+  return hasFailures(reports) ? 1 : 0;
+}
+
 const [command, ...args] = process.argv.slice(2);
 if (command === "keygen") {
   keygen(args);
 } else if (command === "check-config") {
   process.exitCode = checkConfig(args[0] ?? process.env.LLMR_CONFIG ?? "config/config.yaml");
+} else if (command === "check-accounts") {
+  process.exitCode = await checkAccountsCommand(args);
 } else if (command === "backup-seal" || command === "backup-open") {
   const passphrase = process.env.LLMR_BACKUP_PASSPHRASE ?? "";
   const transform = command === "backup-seal" ? sealBackup : openBackup;
