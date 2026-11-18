@@ -14,9 +14,13 @@ function invalidKey(): RouterError {
   return new RouterError(401, "invalid_api_key", "Invalid API key.", "authentication_error");
 }
 
-function checkThrottle(request: FastifyRequest, runtime: Runtime): void {
+/**
+ * The answer to a key that did not match. Valid keys never get here, so one misconfigured
+ * app cannot lock out everything else at the same address.
+ */
+function refuseKey(request: FastifyRequest, runtime: Runtime): RouterError {
   if (runtime.authThrottle.isBlocked(request.ip)) {
-    throw new RouterError(
+    return new RouterError(
       429,
       "too_many_auth_failures",
       "Too many failed authentication attempts.",
@@ -24,30 +28,25 @@ function checkThrottle(request: FastifyRequest, runtime: Runtime): void {
       { "retry-after": "60" },
     );
   }
+  runtime.authThrottle.recordFailure(request.ip);
+  return invalidKey();
 }
 
 export function authenticateClient(request: FastifyRequest, runtime: Runtime): ClientConfig {
-  checkThrottle(request, runtime);
   const key = extractKey(request.headers);
-  if (key !== null) {
-    const match = runtime.clients.authenticate(hashKey(key));
-    if (match) return match;
-  }
-  runtime.authThrottle.recordFailure(request.ip);
-  throw invalidKey();
+  const match = key === null ? null : runtime.clients.authenticate(hashKey(key));
+  if (match) return match;
+  throw refuseKey(request, runtime);
 }
 
 export function authenticateAdmin(request: FastifyRequest, runtime: Runtime): void {
-  checkThrottle(request, runtime);
   const key = extractKey(request.headers);
   if (key !== null && keysMatch(hashKey(key), runtime.config.adminKeyHash)) return;
-  runtime.authThrottle.recordFailure(request.ip);
-  throw invalidKey();
+  throw refuseKey(request, runtime);
 }
 
 /** Accepts the admin key, or the key that can only read metrics. */
 export function authenticateMetrics(request: FastifyRequest, runtime: Runtime): void {
-  checkThrottle(request, runtime);
   const key = extractKey(request.headers);
   if (key !== null) {
     const presented = hashKey(key);
@@ -56,8 +55,7 @@ export function authenticateMetrics(request: FastifyRequest, runtime: Runtime): 
     const metrics = metricsKeyHash ? keysMatch(presented, metricsKeyHash) : false;
     if (admin || metrics) return;
   }
-  runtime.authThrottle.recordFailure(request.ip);
-  throw invalidKey();
+  throw refuseKey(request, runtime);
 }
 
 /** Authenticates before the body is read, so unauthenticated uploads are refused early. */

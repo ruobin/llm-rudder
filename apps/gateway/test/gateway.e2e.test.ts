@@ -64,7 +64,10 @@ describe("gateway", () => {
       for (let i = 0; i < 10; i += 1) {
         await gateway.post({ model: "frontier", messages: userMessage() }, { key: "bad" });
       }
-      const blocked = await gateway.post({ model: "frontier", messages: userMessage() });
+      const blocked = await gateway.post(
+        { model: "frontier", messages: userMessage() },
+        { key: "bad" },
+      );
       expect(blocked.status).toBe(429);
       expect(blocked.headers.get("retry-after")).toBe("60");
     });
