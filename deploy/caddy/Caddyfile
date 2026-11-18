@@ -1,6 +1,6 @@
 {$LLMR_DOMAIN} {
-	# Only the public API is exposed. Use an SSH tunnel for /router/*.
-	@public path /v1/* /healthz
+	# The API and the endpoints llmr-edge uses. Use an SSH tunnel for the rest of /router/*.
+	@public path /v1/* /healthz /router/edge/*
 	handle @public {
 		request_body {
 			max_size 32MB

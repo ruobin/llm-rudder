@@ -5,10 +5,12 @@ WORKDIR /repo
 # Install dependencies first, so source changes do not repeat this step.
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY apps/gateway/package.json apps/gateway/
-RUN pnpm install --frozen-lockfile --filter @llm-router/gateway
+COPY packages/shared/package.json packages/shared/
+RUN pnpm install --frozen-lockfile --filter "@llm-router/gateway..."
 
+COPY packages/shared packages/shared
 COPY apps/gateway apps/gateway
-RUN pnpm --filter @llm-router/gateway build
+RUN pnpm --filter "@llm-router/gateway..." build
 RUN pnpm --filter @llm-router/gateway deploy --legacy --prod /out
 
 FROM node:26-slim

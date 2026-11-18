@@ -56,7 +56,7 @@ services:
     restart: unless-stopped
     environment:
       LLMR_DOMAIN: ${LLMR_DOMAIN:-}
-      LLMR_CHAT_DOMAIN: ${LLMR_CHAT_DOMAIN:-}
+      LLMR_CHAT_DOMAIN: ${LLMR_CHAT_DOMAIN:-chat.localhost}
     ports:
       - 80:80
       - 443:443
