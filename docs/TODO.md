@@ -218,29 +218,29 @@ Runs alongside Phase 1. Nothing here blocks the MVP code, but the results replac
 
 **Dashboard (Next.js, React, Tailwind CSS, shadcn/ui)**
 
-- [ ] Single-user login
-- [ ] Overview, Accounts, Usage, Requests, Clients and Settings pages
-- [ ] Client keys stored in MySQL, with create and revoke
+- [x] Single-user login
+- [x] Overview, Accounts, Usage, Requests, Clients and Settings pages
+- [x] Client keys stored in MySQL, with create and revoke
 
 **Operations**
 
-- [ ] Prometheus metrics and a Grafana dashboard
-- [ ] Telegram notifications
-- [ ] Balance warnings for New API and OpenRouter
-- [ ] Hot config reload for new requests
-- [ ] Circuit breakers and health-based tie-breaking
-- [ ] Encrypted secrets at rest
-- [ ] Image publishing to GHCR, and a deploy workflow
-- [ ] Automated off-site backups, with a restore test
-- [ ] Ledger retention job and daily rollups
-- [ ] Load test: added latency, memory per stream, streams per instance
-- [ ] Failure-injection tests
+- [x] Prometheus metrics and a Grafana dashboard
+- [x] Telegram notifications
+- [x] Balance warnings for New API and OpenRouter
+- [x] Hot config reload for new requests
+- [x] Circuit breakers and health-based tie-breaking
+- [x] Encrypted ChatGPT sign-in and backups. Provider keys stay in `.env`.
+- [~] Image publishing to GHCR, and a deploy workflow. They run for the first time after this phase reaches `main`.
+- [~] Automated off-site backups, with a restore test. The scripts are tested. **(you)** Choose where copies go and schedule them.
+- [x] Ledger retention job and daily rollups
+- [x] Load test: added latency, memory per stream, streams per instance
+- [x] Failure-injection tests
 
 **Exit criteria**
 
-- [ ] Two weeks of daily use with no manual intervention.
-- [ ] Usage totals match provider dashboards within 5%.
-- [ ] Restoring from backup works on a clean VPS.
+- [ ] **(you)** Two weeks of daily use with no manual intervention.
+- [ ] **(you)** Usage totals match provider dashboards within 5%.
+- [x] Restoring from backup works on a clean server. Tested with a fresh Compose project.
 
 ---
 

@@ -1,6 +1,6 @@
 # Deploying llm-rudder
 
-This guide takes a VPS to a working gateway and covers daily operation. Commands run on the VPS unless a step says otherwise, and they assume the project is in `/opt/llm-rudder`.
+This guide takes a VPS to a working gateway and covers daily operation, then the optional dashboard, alerts, charts and published images. Commands run on the VPS unless a step says otherwise, and they assume the project is in `/opt/llm-rudder`.
 
 ## What you need
 
@@ -123,6 +123,8 @@ llmr-edge chatgpt status --for root@your-vps
 
 Add `--dir /path/to/project` if the project is not in `/opt/llm-rudder`. The gateway notices the new sign-in within a few seconds, and from then on the VPS renews it. Set a limit for this app in [ChatGPT usage settings](https://chatgpt.com/settings/usage).
 
+To keep the sign-in encrypted on disk, set `LLMR_STATE_KEY` in `.env` to the output of `openssl rand -base64 32`, run `docker compose up -d gateway`, and push the sign-in again.
+
 ## 6. Connect your clients
 
 Each client uses `https://your-host/v1` as its base URL, its own key, and the models `frontier`, `medium` and `flash`. To read a key on the VPS:
@@ -146,16 +148,16 @@ Anyone with a key can spend what that key can reach, so give each client its own
 
 Run these from `/opt/llm-rudder`.
 
-| Task                 | Command                                                                   |
-| -------------------- | ------------------------------------------------------------------------- |
-| See what is running  | `docker compose ps`                                                       |
-| Follow the logs      | `docker compose logs -f gateway`                                          |
-| Apply a config edit  | `docker compose restart gateway`                                          |
-| Apply a `.env` edit  | `docker compose up -d gateway`                                            |
-| Update               | `git pull --ff-only && docker compose up -d --build gateway`              |
-| Go back to a version | `git checkout <commit> && docker compose up -d --build gateway`           |
-| Check a config       | `docker compose run --rm --no-deps gateway node dist/cli.js check-config` |
-| Show the sign-in     | `docker compose exec -T gateway node dist/cli.js chatgpt status`          |
+| Task                 | Command                                                                     |
+| -------------------- | --------------------------------------------------------------------------- |
+| See what is running  | `docker compose ps`                                                         |
+| Follow the logs      | `docker compose logs -f gateway`                                            |
+| Apply a config edit  | `docker compose kill -s HUP gateway`, or **Reload config** in the dashboard |
+| Apply a `.env` edit  | `docker compose up -d gateway`                                              |
+| Update               | `git pull --ff-only && docker compose up -d --build gateway`                |
+| Go back to a version | `git checkout <commit> && docker compose up -d --build gateway`             |
+| Check a config       | `docker compose run --rm --no-deps gateway node dist/cli.js check-config`   |
+| Show the sign-in     | `docker compose exec -T gateway node dist/cli.js chatgpt status`            |
 
 Logs are JSON lines. They never contain prompts, answers or keys.
 
@@ -177,24 +179,46 @@ To replace a client key, run `keygen` with its name, put the new value in `.env`
 
 ## 8. What to back up
 
-| Data                                  | Where                                    | Back it up?                      |
-| ------------------------------------- | ---------------------------------------- | -------------------------------- |
-| Keys and database passwords           | `.env`                                   | Yes, in a password manager       |
-| Your accounts and tiers               | `config/config.yaml`, not in Git         | Yes                              |
-| Usage records, spend, limits and pins | Docker volume `llm-rudder_mysql-data`    | Yes, with the commands below     |
-| ChatGPT sign-in                       | Docker volume `llm-rudder_gateway-state` | No. If it is lost, sign in again |
+| Data                                  | Where                                    | In the backup?                  |
+| ------------------------------------- | ---------------------------------------- | ------------------------------- |
+| Keys and database passwords           | `.env`                                   | Yes                             |
+| Your accounts and tiers               | `config/config.yaml`, not in Git         | Yes                             |
+| Usage records, spend, limits and pins | Docker volume `llm-rudder_mysql-data`    | Yes                             |
+| ChatGPT sign-in                       | Docker volume `llm-rudder_gateway-state` | No. Sign in again if it is lost |
+
+`deploy/backup.sh` writes one encrypted file to `backups/` and removes local copies older than 14 days. Set a passphrase first, and **keep a copy of it somewhere else**, because a backup cannot be opened without it:
 
 ```bash
-# Back up
-docker compose exec -T mysql sh -c \
-  'exec mysqldump --single-transaction --no-tablespaces -uroot -p"$MYSQL_ROOT_PASSWORD" llm_rudder' \
-  > llm-rudder.sql
+sed -i "s/^LLMR_BACKUP_PASSPHRASE=.*/LLMR_BACKUP_PASSPHRASE=$(openssl rand -hex 24)/" .env
+sed -n 's/^LLMR_BACKUP_PASSPHRASE=//p' .env    # save this in your password manager
 
-# Restore
-docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" llm_rudder' < llm-rudder.sql
+./deploy/backup.sh
+./deploy/restore-test.sh                       # restores the newest backup into a temporary database
 ```
 
-The database holds usage records but no prompts or answers. Copy backups off the VPS if you want them to survive losing it.
+To keep a copy off the server, set `LLMR_BACKUP_REMOTE` in `.env` to `user@host:/path`, which uses `scp`, or to `rclone:remote:path`, which needs `rclone`. Then schedule both scripts, for example in `/etc/cron.d/llm-rudder-backup`:
+
+```cron
+15 3 * * * root cd /opt/llm-rudder && ./deploy/backup.sh >> backups/backup.log 2>&1
+30 4 * * 0 root cd /opt/llm-rudder && ./deploy/restore-test.sh >> backups/backup.log 2>&1
+```
+
+**To restore on a new server,** do step 1, put the passphrase in `.env`, copy the backup file over, and run:
+
+```bash
+mkdir restored
+docker compose run --rm -T --no-deps gateway node dist/cli.js backup-open < llm-rudder-TIME.backup \
+  | gzip -dc | tar -C restored -xf -
+cp restored/env .env
+cp restored/config.yaml config/config.yaml
+
+docker compose up -d --wait mysql
+docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" llm_rudder' < restored/database.sql
+rm -rf restored
+docker compose up -d gateway
+```
+
+If you use a ChatGPT plan, sign in again afterwards.
 
 ## 9. Troubleshooting
 
@@ -208,6 +232,56 @@ The database holds usage records but no prompts or answers. Copy backups off the
 | `All targets for this request are out of quota`           | Every target is paused. `retry-after` says when one can be tried again                                            |
 | ChatGPT state `auth_required`                             | On your computer, run `llmr-edge chatgpt login --for root@your-vps`                                               |
 | Streamed answers arrive all at once                       | Turn off buffering in your proxy                                                                                  |
+
+## 10. Add the dashboard
+
+The dashboard shows gateway health, accounts, usage and the request log, and creates and revokes client keys. Create its login, which prints the password once:
+
+```bash
+docker compose run --rm -T --no-deps gateway node dist/cli.js dashboard-secrets >> .env
+docker compose --profile dashboard up -d --build
+```
+
+It listens on `127.0.0.1:4150`. Sign-in needs HTTPS or `localhost`, so choose one way to reach it:
+
+- **SSH tunnel:** `ssh -L 4150:127.0.0.1:4150 root@your-vps`, then open `http://localhost:4150`.
+- **Tailscale:** `tailscale serve --bg --https=4150 http://127.0.0.1:4150`.
+- **A public hostname:** set `LLMR_DASHBOARD_DOMAIN` with the Caddy profile, or adapt [`deploy/nginx/llm-rudder-dashboard.conf.example`](../deploy/nginx/llm-rudder-dashboard.conf.example). The dashboard can create keys that spend your accounts, so prefer a private route.
+
+To keep it running across updates, add `COMPOSE_PROFILES=dashboard` to `.env`. To change the password, delete the two `LLMR_DASHBOARD_` secret lines from `.env`, repeat the command above, and sign in again.
+
+## 11. Get alerts
+
+Warnings about limits, fallbacks, stopped accounts and budgets can go to ntfy, a webhook or Telegram. Put the addresses or tokens in `.env`, and name them under `notifications` in `config/config.yaml`. For Telegram, create a bot with BotFather, set `LLMR_TELEGRAM_BOT_TOKEN` and `LLMR_TELEGRAM_CHAT_ID`, and uncomment the two Telegram lines. Then run `docker compose up -d gateway`.
+
+To be warned before a New API or OpenRouter key runs out, add `balance: { warn_below_usd: 5 }` to that account.
+
+## 12. Add metrics and charts
+
+```bash
+sed -i '/^LLMR_METRICS_KEY=$/d' .env
+docker compose run --rm -T --no-deps gateway node dist/cli.js keygen LLMR_METRICS_KEY >> .env
+sed -i "s/^LLMR_GRAFANA_PASSWORD=.*/LLMR_GRAFANA_PASSWORD=$(openssl rand -hex 18)/" .env
+```
+
+Uncomment `metrics_key_env` under `admin` in `config/config.yaml`, then run:
+
+```bash
+docker compose up -d gateway
+docker compose --profile monitoring up -d
+```
+
+Grafana listens on `127.0.0.1:3001`, with the user `admin` and the password from `.env`. Its **llm-rudder** dashboard is ready to use. Reach it with `ssh -L 3001:127.0.0.1:3001 root@your-vps`.
+
+## 13. Use published images
+
+Each commit on `main` publishes images for amd64 and arm64 to `ghcr.io/ruobin/llm-rudder-gateway` and `ghcr.io/ruobin/llm-rudder-dashboard`. If you publish from a fork, change those names in `docker-compose.ghcr.yml`.
+
+```bash
+./deploy/update.sh sha-abc1234    # or latest, or a version tag
+```
+
+The script waits for the new gateway to become ready, and returns to the previous version if it does not. The **Deploy** workflow runs the same script over SSH when you start it by hand. It needs a `production` environment with the secrets `DEPLOY_HOST`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` and `DEPLOY_PATH`.
 
 ## Removing it
 

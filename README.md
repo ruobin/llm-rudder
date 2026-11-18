@@ -2,7 +2,7 @@
 
 A personal LLM gateway. Clients ask for `frontier`, `medium` or `flash`. The gateway picks a real model from your API keys and OpenAI-compatible gateways, moves to the next one when a target fails or runs out of quota, and drops to another tier with a warning instead of failing the task.
 
-**Status: Phases 1 to 4 are built.** The gateway serves the OpenAI Chat Completions and Responses APIs and Anthropic's Messages API, and translates between them, so any client can use any model. The real OpenCode, Pi, Claude Code and Codex command-line clients have been tested through it with fake providers, and chat UIs use the same Chat Completions API. A small local helper keeps Claude Code on your Claude plan and moves it to the gateway when the plan runs out, and your ChatGPT plan can serve every client. A real ChatGPT plan has served text and tool requests through the gateway. A deployed VPS has received that sign-in, answered a request and renewed its token. Other real providers, and OpenCode, Pi, Codex and chat UIs on the real plan, are still untested. See [the design](docs/DESIGN.md) and [the to-do list](docs/TODO.md).
+**Status: Phases 1 to 5 are built.** The gateway serves the OpenAI Chat Completions and Responses APIs and Anthropic's Messages API, and translates between them, so any client can use any model. The real OpenCode, Pi, Claude Code and Codex command-line clients have been tested through it with fake providers, and chat UIs use the same Chat Completions API. A small local helper keeps Claude Code on your Claude plan and moves it to the gateway when the plan runs out, and your ChatGPT plan can serve every client. A real ChatGPT plan has served text and tool requests through the gateway. A deployed VPS has received that sign-in, answered a request and renewed its token. A web dashboard, metrics, alerts and encrypted backups are included. Other real providers, and OpenCode, Pi, Codex and chat UIs on the real plan, are still untested. See [the design](docs/DESIGN.md) and [the to-do list](docs/TODO.md).
 
 ## Try it locally
 
@@ -15,9 +15,11 @@ pnpm demo
 
 The demo walks through normal routing, failover, tier fallback with a warning, and recovery.
 
+To see the web dashboard with a month of made-up traffic, run `pnpm demo:dashboard` and open the address it prints.
+
 ## Run it on a VPS
 
-Follow [the deployment guide](docs/DEPLOYMENT.md). It covers installation, choosing accounts, public or private access, connecting clients, updates, backups and troubleshooting.
+Follow [the deployment guide](docs/DEPLOYMENT.md). It covers installation, choosing accounts, public or private access, connecting clients, the dashboard, alerts, metrics, updates, backups and troubleshooting.
 
 Use a VPS in a region your providers support, such as the United States, Singapore or Taiwan. Hong Kong and mainland China are not supported by Anthropic, OpenAI or Google. See [the design](docs/DESIGN.md#35-where-the-vps-may-run).
 
@@ -118,6 +120,7 @@ pnpm check    # lint, format check, type-check and tests
 pnpm smoke:claude-code   # run the real Claude Code CLI with a fake login and no outside network
 pnpm smoke:codex         # the same for Codex
 pnpm smoke:clients       # the same for OpenCode and Pi
+pnpm load-test           # measure added latency, stream memory and throughput
 ```
 
 Tests use fake upstreams. To include the MySQL tests, set `TEST_DATABASE_URL`.

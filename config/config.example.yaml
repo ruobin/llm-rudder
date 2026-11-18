@@ -9,6 +9,7 @@ server:
 
 admin:
   key_env: LLMR_ADMIN_KEY
+  # metrics_key_env: LLMR_METRICS_KEY # a key that can only read /metrics
 
 # One key per client, so each can be limited or revoked on its own.
 # notice: text adds a one-line note to the reply when a tier falls back.
@@ -29,6 +30,7 @@ accounts:
     compat: new_api
     cost_class: prepaid
     trust: self_hosted
+    # balance: { warn_below_usd: 5 } # warns before this key runs out
 
   # Set monthly_usd to your Google AI plan's developer credit: 10, 40 or 100.
   gemini-key:
@@ -121,6 +123,7 @@ routing:
   max_attempts_per_tier: 3
   deadline_s: 900 # time allowed to reach the first model output
   prefer_same_format: true # try accounts in the client's own API format first
+  health_order: true # within a tier, try healthy targets of equal cost first
 
 timeouts:
   connect_s: 10
@@ -142,7 +145,13 @@ edge:
 notifications:
   ntfy_url_env: LLMR_NTFY_URL
   webhook_url_env: LLMR_WEBHOOK_URL
+  # telegram_bot_token_env: LLMR_TELEGRAM_BOT_TOKEN
+  # telegram_chat_id_env: LLMR_TELEGRAM_CHAT_ID
   repeat_after_s: 3600
+
+retention:
+  ledger_days: 90 # how long request details are kept; daily totals are kept for good
+  events_days: 90
 
 pricing_file: pricing.yaml
 models_file: models.yaml

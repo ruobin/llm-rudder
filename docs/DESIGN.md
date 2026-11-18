@@ -2,7 +2,7 @@
 
 |            |                                                                                                                                  |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Status     | Draft 2, updated 2026-11-18 with Phases 1 to 4 as built. It replaces the local-first Python Draft 1, which stays in git history. |
+| Status     | Draft 2, updated 2026-11-18 with Phases 1 to 5 as built. It replaces the local-first Python Draft 1, which stays in git history. |
 | Scope      | A personal model gateway on your own VPS, with a phased path to a production-grade service                                       |
 | Deployment | [`DEPLOYMENT.md`](DEPLOYMENT.md) has the tested steps for installing and operating it.                                           |
 | Work plan  | [`TODO.md`](TODO.md) splits the work into phases with checklists and exit criteria.                                              |
@@ -875,6 +875,8 @@ stateDiagram-v2
 - **Persistence.** Long-lived states (`exhausted`, `backoff`, `disabled`) are written to MySQL, so a restart does not hammer an exhausted account. Short cooldowns stay in memory.
 - **Account pauses.** A temporary failure that covers a whole account pauses it for 15 seconds, doubling up to 5 minutes. It does not shorten a usage-limit backoff that is being rechecked.
 - **Failures of one request** change no state, so one unsupported input cannot block other requests.
+- **Circuit breaker.** When at least five recent attempts exist and half of them failed for health reasons, the target rests for 30 seconds, doubling up to 5 minutes. One request then tests it.
+- **Health order.** When a quarter of a target's recent attempts failed, it moves behind other targets of the same tier and cost class. It never moves behind a more expensive class.
 
 ### 8.9 Tier fallback and warnings
 
@@ -949,7 +951,7 @@ Built-in profiles: `openai`, `gemini`, `new_api`, `openrouter`, `generic`. An ac
 - **Do not retry what the gateway already retried.** New API has its own channel retry, so the router moves on to a different target.
 - **Loop guard.** The router sends `x-llmr-hop` with its instance ID, and refuses a request carrying its own ID. This stops a loop if New API ever has a channel pointing back at the router.
 - **Trust levels.** `self_hosted` for your own gateway, `third_party` for others. A client can be limited to certain accounts with `allow_accounts`, so sensitive scripts never reach a third party.
-- **Model honesty.** The router records the `model` the upstream reports, and Phase 5 adds a mismatch report. This catches only honest mislabeling: research shows black-box checks cannot reliably prove which model answered.
+- **Model honesty.** The router records the `model` the upstream reports, and the dashboard's request page shows when it differs. This catches only honest mislabeling: research shows black-box checks cannot reliably prove which model answered.
 - **Balance checks (Phase 5).** New API exposes `GET /v1/dashboard/billing/subscription` and `/usage` to the same key. OpenRouter exposes `GET /api/v1/key`. These can warn before a balance reaches zero.
 
 **Gemini tool calls.** Gemini 3 and 4 require thought signatures to be returned on function calls and answer `400` without them. Community reports place the signature at `tool_calls[].extra_content.google.thought_signature` in the OpenAI format; Google's page does not show the path, so Phase 0 confirms it. Coding clients often drop unknown fields, so the gateway keeps a short-lived map from tool call ID to `extra_content` and restores it on the next request. `extra_content` is removed for non-Gemini upstreams. When history came from another model, it uses Google's documented bypass value `skip_thought_signature_validator`.
@@ -1166,19 +1168,22 @@ A new sign-in clears these states. A restart also clears a stopped account that 
 
 ### 8.14 HTTP API
 
-| Method and path                                     | Purpose                                         | Auth          | Phase |
-| --------------------------------------------------- | ----------------------------------------------- | ------------- | ----- |
-| `POST /v1/chat/completions`                         | Chat Completions, streaming and not             | Client key    | 1     |
-| `GET /v1/models`                                    | Tiers, in OpenAI list format                    | Client key    | 1     |
-| `GET /healthz`                                      | Liveness                                        | None          | 1     |
-| `GET /readyz`                                       | Config loaded and database reachable            | None          | 1     |
-| `GET /router/status`                                | Accounts, tiers, spend, episodes, recent events | Admin key     | 1     |
-| `POST /router/accounts/:id/reset`                   | Clear a `disabled` or `exhausted` state         | Admin key     | 1     |
-| `POST /v1/messages`, `/v1/messages/count_tokens`    | Anthropic Messages                              | Client key    | 2     |
-| `GET /router/edge/plan`, `POST /router/edge/report` | Edge configuration and state                    | Client key    | 2     |
-| `POST /v1/responses`                                | Responses API, for Codex                        | Client key    | 3     |
-| `GET /router/codex/models`                          | Codex model catalog                             | Client key    | 3     |
-| `GET /metrics`                                      | Prometheus                                      | Internal only | 5     |
+| Method and path                                                                   | Purpose                                         | Auth                 | Phase |
+| --------------------------------------------------------------------------------- | ----------------------------------------------- | -------------------- | ----- |
+| `POST /v1/chat/completions`                                                       | Chat Completions, streaming and not             | Client key           | 1     |
+| `GET /v1/models`                                                                  | Tiers, in OpenAI list format                    | Client key           | 1     |
+| `GET /healthz`                                                                    | Liveness                                        | None                 | 1     |
+| `GET /readyz`                                                                     | Config loaded and database reachable            | None                 | 1     |
+| `GET /router/status`                                                              | Accounts, tiers, spend, episodes, recent events | Admin key            | 1     |
+| `POST /router/accounts/:id/reset`                                                 | Clear a `disabled` or `exhausted` state         | Admin key            | 1     |
+| `POST /v1/messages`, `/v1/messages/count_tokens`                                  | Anthropic Messages                              | Client key           | 2     |
+| `GET /router/edge/plan`, `POST /router/edge/report`                               | Edge configuration and state                    | Client key           | 2     |
+| `POST /v1/responses`                                                              | Responses API, for Codex                        | Client key           | 3     |
+| `GET /router/codex/models`                                                        | Codex model catalog                             | Client key           | 3     |
+| `GET /metrics`                                                                    | Prometheus                                      | Admin or metrics key | 5     |
+| `GET /router/usage`, `/router/requests`, `/router/requests/:id`, `/router/events` | Reports for the dashboard                       | Admin key            | 5     |
+| `GET`, `POST /router/clients`, `DELETE /router/clients/:id`                       | List, create and revoke client keys             | Admin key            | 5     |
+| `GET /router/settings`, `POST /router/config/reload`                              | Running settings, and loading a changed config  | Admin key            | 5     |
 
 **Authentication.** `Authorization: Bearer llmr_…`, or `x-api-key`. The edge routes need a client with `edge: true`.
 
@@ -1266,9 +1271,9 @@ CREATE TABLE events (
 );
 ```
 
-`session_pins` holds each conversation's current target. Phase 5 adds `client_keys`, so keys can be managed from the dashboard.
+`session_pins` holds each conversation's current target. `client_keys` holds dashboard clients, with only a SHA-256 hash of each key. `usage_daily` holds totals by day, client, account and model.
 
-**Retention (Phase 5).** A daily job keeps `requests` and `attempts` for 90 days, and aggregated daily usage for longer.
+**Retention.** An hourly job saves daily totals, then removes `requests`, `attempts` and `events` older than the configured limits, 90 days by default. Daily totals are kept. Reports read the last three days from the ledger, so they are always current.
 
 ### 8.16 Pricing, budgets and the ledger
 
@@ -1325,7 +1330,7 @@ The host itself needs the usual care: SSH keys only, a firewall allowing only 22
 
 - **Logs:** one JSON line per request and per attempt, with no content.
 - **`GET /router/status`:** the live view in Phase 1.
-- **Metrics (Phase 5):** requests by tier, target and outcome; attempt latency; time to first token; fallback counts; tokens; spend; quota state.
+- **Metrics:** `GET /metrics` reports requests by client, tier and outcome; attempts by target; latency; time to first output; fallbacks; tokens; spend; list-price value; target availability; balances; and memory. Labels never contain request content. `deploy/monitoring` holds the Prometheus and Grafana setup.
 - **Uptime:** an external monitor on `/healthz`.
 
 Example status output:
@@ -1353,11 +1358,18 @@ Example status output:
 
 ### 8.19 Dashboard (Phase 5)
 
-A Next.js app with the App Router, React Server Components, Tailwind CSS and shadcn/ui. It talks to the gateway's admin API over the private Docker network, so the browser never holds the admin key.
+A Next.js app with the App Router, React Server Components, Tailwind CSS and components in the shadcn/ui style. Its server talks to the gateway's admin API over the private Docker network, so the browser never holds the admin key.
 
-Pages: **Overview** (tier health, active fallbacks), **Accounts** (quota, budgets, reset), **Usage** (tokens, spend and subscription value by day, client and model), **Requests** (searchable ledger, no content), **Clients** (create and revoke keys), **Settings** (read-only routing view).
+| Page         | Shows                                                                          |
+| ------------ | ------------------------------------------------------------------------------ |
+| **Overview** | Tier health, active fallbacks, today's totals and recent events                |
+| **Accounts** | State, limits, budgets and balances, with **Try again now**                    |
+| **Usage**    | Requests, tokens, spend and list-price value by day, client, account and model |
+| **Requests** | A searchable log and each request's attempts, with no prompts or answers       |
+| **Clients**  | Every client, plus creating and revoking keys. A new key is shown once         |
+| **Settings** | Routing, tiers, retention and notification status, with **Reload config**      |
 
-Access is protected by a single-user login, and it can additionally sit behind Tailscale.
+**Login.** One password, stored as a scrypt hash. A signed session cookie is `HttpOnly` and `SameSite=Strict`, lasts seven days, is limited to HTTPS in production, and stops working when the password changes. Failed attempts are limited per address and overall. A proxy check redirects visitors without a session, and every data request checks again.
 
 ### 8.20 Testing
 
@@ -1476,7 +1488,7 @@ flowchart LR
 - **Failure of Redis degrades, not stops.** Instances fall back to local state and log loudly. Budgets become stricter by reserving a smaller share per instance.
 - **The ledger scales separately.** Monthly partitions on `requests` and `attempts`, a daily rollup table, and later a read replica for the dashboard. Writes stay asynchronous.
 
-**Measure before scaling.** Phase 5 adds a load test against the fake upstream. It records added latency, memory per open stream and the number of streams per instance. Stage 2's triggers should be set from those numbers.
+**Measure before scaling.** `pnpm load-test` runs against the fake upstream. On an Apple Silicon laptop, the gateway added about 0.2 ms at the median and 0.4 to 0.6 ms at the 95th percentile, handled about 8,700 short requests per second, and held 1,000 open streams at about 33 KB each. A provider's own latency and limits will matter far sooner. Stage 2's triggers should be set from those numbers.
 
 ---
 

@@ -64,6 +64,11 @@ export default async function RequestPage({ params }: { params: Promise<{ id: st
                   <TD>
                     {attempt.model}
                     <span className="block text-xs text-secondary">{attempt.accountId}</span>
+                    {attempt.returnedModel && attempt.returnedModel !== attempt.model ? (
+                      <span className="block text-xs text-warning">
+                        Provider reported {attempt.returnedModel}
+                      </span>
+                    ) : null}
                   </TD>
                   <TD>
                     <OutcomeBadge outcome={attempt.outcome} />
