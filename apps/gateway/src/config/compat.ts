@@ -13,6 +13,11 @@ export interface CompatProfile {
   effortMap: Record<string, string>;
   /** Which JSON Schema keywords tool definitions may use. */
   schemaStyle: "standard" | "gemini";
+  /**
+   * The service passes on errors from its own upstreams, so "bad key" or "out of quota"
+   * may describe one of them rather than this account.
+   */
+  relaysErrors: boolean;
 }
 
 const standard: CompatProfile = {
@@ -23,11 +28,12 @@ const standard: CompatProfile = {
   toolExtras: false,
   effortMap: {},
   schemaStyle: "standard",
+  relaysErrors: false,
 };
 
 export const COMPAT_PROFILES = {
   generic: standard,
-  new_api: standard,
+  new_api: { ...standard, relaysErrors: true },
   openrouter: standard,
   openai: { ...standard, maxTokensField: "max_completion_tokens" },
   gemini: {

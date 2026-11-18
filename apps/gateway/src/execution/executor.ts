@@ -7,7 +7,7 @@ import type { Plan, PlanStep } from "../routing/plan.js";
 import { estimateCost } from "../routing/plan.js";
 import type { Runtime } from "../runtime.js";
 import type { Classified, Dialect, Outcome, Usage } from "../types.js";
-import { classifyTransportError, type HeaderBag } from "../upstream/classify.js";
+import { asRelayedFailure, classifyTransportError, type HeaderBag } from "../upstream/classify.js";
 import { SseDecoder, type SseEvent } from "../upstream/sse.js";
 import type { ClientResponse } from "./client-response.js";
 import type { RequestContext } from "./context.js";
@@ -221,13 +221,19 @@ class RequestRun {
         index -= 1;
         continue;
       }
-      const tripped = rt.health.record(target.id, outcome);
+      const failure = result.stateUpdate ?? result.classified;
+      const effect = account.compat.relaysErrors ? asRelayedFailure(failure) : failure;
+      const tripped = rt.health.record(target.id, effect === failure ? outcome : effect.outcome);
       if (outcome === "ok") {
         rt.quota.recordSuccess(target);
       } else if (outcome === "client_aborted") {
         rt.quota.releaseProbe(target);
       } else {
-        rt.quota.recordFailure(target, result.stateUpdate ?? result.classified);
+        rt.quota.recordFailure(target, effect);
+        // The whole account stops only if the service itself confirms the problem.
+        if (effect !== failure && failure.scope === "account") {
+          rt.accountChecks.request(account, target, failure);
+        }
       }
       if (tripped) rt.quota.tripCircuit(target);
 

@@ -30,7 +30,7 @@ clients:
   - { id: script, key_env: SCRIPT_KEY, notice: none }
   - { id: limited, key_env: LIMITED_KEY, rpm: 2, allow_accounts: [gateway-a] }
 accounts:
-  gateway-a: { base_url_env: UPSTREAM_URL, api_key_env: GATEWAY_KEY, compat: new_api, cost_class: prepaid, trust: self_hosted }
+  gateway-a: { base_url_env: UPSTREAM_URL, api_key_env: GATEWAY_KEY, compat_overrides: { relays_errors: false }, compat: new_api, cost_class: prepaid, trust: self_hosted }
   openai-key: { base_url_env: UPSTREAM_URL, api_key_env: OPENAI_KEY, compat: openai, cost_class: metered, budget: { daily_usd: 1 } }
   gemini-key: { base_url_env: UPSTREAM_URL, api_key_env: GEMINI_KEY, compat: gemini, cost_class: metered }
 tiers:

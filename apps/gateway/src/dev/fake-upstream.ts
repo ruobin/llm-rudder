@@ -405,6 +405,7 @@ export class FakeUpstream {
   planModels: JsonObject[] | null = null;
   private readonly scripts = new Map<string, FakeStep[]>();
   private readonly always = new Map<string, FakeStep>();
+  private readonly paths = new Map<string, FakeStep>();
   private readonly sockets = new Set<Socket>();
   private server: Server | null = null;
   url = "";
@@ -418,6 +419,12 @@ export class FakeUpstream {
   /** Sets the response for every request to a model. */
   setAlways(model: string, step: FakeStep): this {
     this.always.set(model, step);
+    return this;
+  }
+
+  /** Sets the response for every request to a path, such as /v1/models. */
+  setPath(path: string, step: FakeStep): this {
+    this.paths.set(path, step);
     return this;
   }
 
@@ -465,7 +472,10 @@ export class FakeUpstream {
     this.requests.push({ path, headers: req.headers, body, rawBody });
 
     const model = String(body.model);
-    const scripted = this.scripts.get(model)?.shift() ?? this.always.get(model);
+    const scripted =
+      this.scripts.get(model)?.shift() ??
+      this.always.get(model) ??
+      this.paths.get(path.split("?")[0] ?? path);
     await this.play(scripted ?? this.defaultStep(path, model, body.stream === true), res);
   }
 

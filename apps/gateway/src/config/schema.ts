@@ -42,6 +42,7 @@ const compatOverrides = z
     tool_extras: z.boolean().optional(),
     effort_map: z.record(z.string(), z.string()).optional(),
     schema_style: z.enum(["standard", "gemini"]).optional(),
+    relays_errors: z.boolean().optional(),
   })
   .optional();
 

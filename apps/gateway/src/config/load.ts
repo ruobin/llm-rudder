@@ -272,6 +272,11 @@ export function buildConfig(
         toolExtras: overrides.tool_extras ?? base.toolExtras,
         effortMap: overrides.effort_map ?? base.effortMap,
         schemaStyle: overrides.schema_style ?? base.schemaStyle,
+        relaysErrors:
+          account.kind === "http" &&
+          (overrides.relays_errors ??
+            // Nothing says what an unnamed service has behind it.
+            (account.compat === "generic" ? account.trust !== "first_party" : base.relaysErrors)),
       },
       costClass: account.cost_class,
       trust: account.trust,

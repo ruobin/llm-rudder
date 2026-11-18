@@ -26,6 +26,7 @@ import { TargetHealth } from "./state/health.js";
 import { QuotaManager } from "./state/quota.js";
 import { PIN_IDLE_MS, PinStore } from "./routing/pins.js";
 import { ReasoningStore } from "./translate/artifacts.js";
+import { AccountChecks } from "./upstream/account-check.js";
 import { BalanceMonitor } from "./upstream/balance.js";
 import { HttpUpstreamClient, type UpstreamClient } from "./upstream/client.js";
 import { ToolExtrasStore } from "./upstream/tool-extras.js";
@@ -56,6 +57,7 @@ export interface Runtime {
   clients: ClientRegistry;
   metrics: Metrics;
   balances: BalanceMonitor;
+  accountChecks: AccountChecks;
   limits: ClientLimits;
   authThrottle: FailedAuthThrottle;
   meteredSeen: Set<string>;
@@ -208,6 +210,11 @@ export function createRuntime(config: Config, options: RuntimeOptions = {}): Run
       notifier,
       now,
       (account, error) => log.warn({ account, err: error }, "balance check failed"),
+    ),
+    accountChecks: new AccountChecks(
+      now,
+      (target, failure) => quota.recordFailure(target, failure),
+      (account, error) => log.warn({ account, err: error }, "account check failed"),
     ),
     limits: new ClientLimits(now),
     authThrottle: new FailedAuthThrottle(now),

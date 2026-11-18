@@ -1,4 +1,4 @@
-import type { Classified, JsonObject } from "../types.js";
+import type { Classified, JsonObject, Outcome } from "../types.js";
 
 export type HeaderBag = Record<string, string | string[] | undefined>;
 
@@ -34,6 +34,8 @@ const NO_ROUTE_CODES = new Set([
   "get_channel_failed",
   "model_not_available",
   "model_not_found",
+  "model_not_in_group",
+  "protocol_not_supported",
 ]);
 
 /** ChatGPT plan answers that retrying will not fix until something changes. */
@@ -55,7 +57,7 @@ const QUOTA_TEXT =
 const OVERFLOW_TEXT =
   /context[_ ]length|maximum context|context window|prompt is too long|input is too long|too many (input )?tokens|exceeds? the (maximum|model'?s?) .*(token|context)|reduce the length/i;
 const UNSUPPORTED_TEXT =
-  /unsupported|not supported|does not support|unknown (parameter|field|name)|unrecognized (request )?(argument|field|parameter)|extra inputs are not permitted|invalid model|no such model|model .*(does not exist|not found)/i;
+  /unsupported|not supported|does not support|unknown (parameter|field|name)|unrecognized (request )?(argument|field|parameter)|extra inputs are not permitted|invalid model|no such model|model .*(does not exist|not found)|不支持/i;
 
 interface ParsedError {
   code: string;
@@ -296,6 +298,23 @@ function classifyParsed(
     return { ...info, outcome: "client_error", retryElsewhere: false, clientStatus: status };
   }
   return { ...info, outcome: "upstream_error", retryElsewhere: true, scope: "model" };
+}
+
+/** What a gateway's answer cannot establish, because it may describe one of its upstreams. */
+const ROUTE_ONLY_OUTCOMES = new Set<Outcome>(["quota_exhausted", "billing", "auth", "unsupported"]);
+
+/**
+ * Reads a failure from a service that passes on its upstreams' errors. The next request
+ * may take a different route through it, so this only rests the target briefly.
+ */
+export function asRelayedFailure(failure: Classified): Classified {
+  if (failure.scope === "request") return failure;
+  if (ROUTE_ONLY_OUTCOMES.has(failure.outcome)) {
+    const relayed: Classified = { ...failure, outcome: "upstream_error", scope: "model" };
+    delete relayed.resetsAt;
+    return relayed;
+  }
+  return failure.scope === "account" ? { ...failure, scope: "model" } : failure;
 }
 
 /** Classifies an upstream response with an HTTP error status. */
