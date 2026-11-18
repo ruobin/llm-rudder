@@ -13,6 +13,7 @@
     "dev": "pnpm --filter @llm-rudder/gateway dev",
     "demo": "pnpm --filter @llm-rudder/gateway demo",
     "demo:dashboard": "pnpm --filter @llm-rudder/gateway demo:dashboard",
+    "docs:screenshots": "pnpm --filter @llm-rudder/gateway docs:screenshots",
     "load-test": "pnpm --filter @llm-rudder/gateway load-test",
     "smoke:claude-code": "pnpm --filter @llm-rudder/edge smoke:claude-code",
     "smoke:codex": "pnpm --filter @llm-rudder/gateway smoke:codex",

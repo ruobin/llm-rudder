@@ -208,6 +208,7 @@ export interface TestGateway {
 export interface GatewayOptions {
   yaml?: string;
   models?: string;
+  pricing?: string;
   upstream?: FakeUpstream;
   persistence?: Persistence;
   now?: () => number;
@@ -219,7 +220,7 @@ export async function startGateway(options: GatewayOptions = {}): Promise<TestGa
   const upstream = options.upstream ?? (await new FakeUpstream().start());
   const { config } = parseConfig(
     options.yaml ?? BASE_CONFIG,
-    PRICING,
+    options.pricing ?? PRICING,
     {
       ADMIN_KEY,
       CHAT_KEY,

@@ -15,6 +15,7 @@
     "cli": "tsx --conditions=@llm-rudder/source src/cli.ts",
     "demo": "tsx --conditions=@llm-rudder/source src/dev/demo.ts",
     "demo:dashboard": "tsx --conditions=@llm-rudder/source dev/dashboard-demo.ts",
+    "docs:screenshots": "tsx --conditions=@llm-rudder/source dev/dashboard-screenshots.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

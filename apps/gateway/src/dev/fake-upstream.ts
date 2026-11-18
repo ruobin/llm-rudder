@@ -403,6 +403,8 @@ export class FakeUpstream {
   abandoned = 0;
   /** What GET /v1/models returns for a ChatGPT plan. */
   planModels: JsonObject[] | null = null;
+  /** Chooses the response when nothing is scripted. The dashboard demo uses this. */
+  respond: ((request: RecordedRequest) => FakeStep | undefined) | null = null;
   private readonly scripts = new Map<string, FakeStep[]>();
   private readonly always = new Map<string, FakeStep>();
   private readonly paths = new Map<string, FakeStep>();
@@ -469,13 +471,15 @@ export class FakeUpstream {
       // Some tests send bodies that are not JSON.
     }
     const path = req.url ?? "";
-    this.requests.push({ path, headers: req.headers, body, rawBody });
+    const request: RecordedRequest = { path, headers: req.headers, body, rawBody };
+    this.requests.push(request);
 
     const model = String(body.model);
     const scripted =
       this.scripts.get(model)?.shift() ??
       this.always.get(model) ??
-      this.paths.get(path.split("?")[0] ?? path);
+      this.paths.get(path.split("?")[0] ?? path) ??
+      this.respond?.(request);
     await this.play(scripted ?? this.defaultStep(path, model, body.stream === true), res);
   }
 
