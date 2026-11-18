@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light dark;
+  --background: #f9f9f7;
+  --card: #fcfcfb;
+  --foreground: #0b0b0b;
+  --secondary: #52514e;
+  --muted: #898781;
+  --border: #e1e0d9;
+  --baseline: #c3c2b7;
+  --hover: #f1f0ec;
+  --primary: #0b0b0b;
+  --primary-foreground: #fcfcfb;
+  --chart: #2a78d6;
+  --good: #006300;
+  --warning: #8a5a00;
+  --serious: #a8461f;
+  --critical: #b92c2c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0d0d0d;
+    --card: #1a1a19;
+    --foreground: #f0efec;
+    --secondary: #c3c2b7;
+    --muted: #898781;
+    --border: #2c2c2a;
+    --baseline: #383835;
+    --hover: #242422;
+    --primary: #f0efec;
+    --primary-foreground: #1a1a19;
+    --chart: #3987e5;
+    --good: #0ca30c;
+    --warning: #fab219;
+    --serious: #ec835a;
+    --critical: #ef6b6b;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-secondary: var(--secondary);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-baseline: var(--baseline);
+  --color-hover: var(--hover);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-chart: var(--chart);
+  --color-good: var(--good);
+  --color-warning: var(--warning);
+  --color-serious: var(--serious);
+  --color-critical: var(--critical);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+:focus-visible {
+  outline: 2px solid var(--chart);
+  outline-offset: 2px;
+}

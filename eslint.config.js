@@ -1,7 +1,15 @@
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/coverage/**", "apps/gateway/drizzle/**"] },
+  {
+    ignores: [
+      "**/dist/**",
+      "**/coverage/**",
+      "**/.next/**",
+      "**/next-env.d.ts",
+      "apps/gateway/drizzle/**",
+    ],
+  },
   ...tseslint.configs.recommended,
   {
     rules: {

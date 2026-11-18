@@ -1,0 +1,33 @@
+{
+  "name": "@llm-rudder/dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web dashboard for the llm-rudder gateway",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 4150",
+    "build": "next build",
+    "start": "next start --port 4150",
+    "test": "vitest run",
+    "typecheck": "next typegen && tsc --noEmit"
+  },
+  "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.72.0",
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^3.7.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tailwindcss": "^4.3.5",
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.0"
+  }
+}

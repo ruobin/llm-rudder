@@ -12,6 +12,7 @@
     "build": "pnpm -r build",
     "dev": "pnpm --filter @llm-rudder/gateway dev",
     "demo": "pnpm --filter @llm-rudder/gateway demo",
+    "demo:dashboard": "pnpm --filter @llm-rudder/gateway demo:dashboard",
     "smoke:claude-code": "pnpm --filter @llm-rudder/edge smoke:claude-code",
     "smoke:codex": "pnpm --filter @llm-rudder/gateway smoke:codex",
     "smoke:clients": "pnpm --filter @llm-rudder/gateway smoke:clients",

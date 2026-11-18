@@ -2,3 +2,5 @@ pnpm-lock.yaml
 dist
 coverage
 apps/gateway/drizzle
+.next
+next-env.d.ts

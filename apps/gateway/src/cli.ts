@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 import {
   CHATGPT_DEFAULT_ACCOUNT,
@@ -6,6 +7,7 @@ import {
   withoutChatGptTokens,
 } from "@llm-rudder/shared";
 import { generateKey } from "./auth/keys.js";
+import { hashPassword } from "./auth/password.js";
 import {
   credentialPath,
   ensureHostId,
@@ -18,6 +20,7 @@ import { ConfigError, loadConfig } from "./config/load.js";
 const usage = `Usage:
   cli keygen [NAME ...]    Print new keys, one per name, in .env format
   cli check-config [PATH]  Validate a config file (default: config/config.yaml)
+  cli dashboard-secrets    Print dashboard settings for .env, and its password to stderr
   cli chatgpt host-id      Create or show this machine's ChatGPT host ID
   cli chatgpt import       Save a sign-in read from standard input
   cli chatgpt status       Show the saved sign-in, without its tokens
@@ -112,6 +115,11 @@ if (command === "keygen") {
   keygen(args);
 } else if (command === "check-config") {
   process.exitCode = checkConfig(args[0] ?? process.env.LLMR_CONFIG ?? "config/config.yaml");
+} else if (command === "dashboard-secrets") {
+  const password = randomBytes(18).toString("base64url");
+  console.log(`LLMR_DASHBOARD_PASSWORD_HASH=${await hashPassword(password)}`);
+  console.log(`LLMR_DASHBOARD_SESSION_SECRET=${randomBytes(32).toString("base64url")}`);
+  console.error(`Dashboard password (shown only now): ${password}`);
 } else if (command === "chatgpt") {
   process.exitCode = await chatgpt(args);
 } else {
